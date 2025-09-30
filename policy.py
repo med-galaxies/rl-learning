@@ -20,9 +20,8 @@ class PolicyIteration:
             for s in range(self.ncol * self.nrow):
                 q_list = []
                 for a in range(4):
-                    q = 0
                     p, next_state, reward, done = self.env.P[s][a][0]
-                    q += p*(reward + self.gamma * self.v[next_state] * (1-done))
+                    q = p*(reward + self.gamma * self.v[next_state] * (1-done))
                     q_list.append(q*self.pi[s][a])
                 new_v[s] = sum(q_list)
                 max_diff = max(max_diff, abs(new_v[s] - self.v[s]))
@@ -35,11 +34,9 @@ class PolicyIteration:
     def policy_improvement(self):  # 策略提升
         for s in range(self.ncol * self.nrow):
             q_list = []
-            
             for a in range(4):
-                q = 0
                 p, next_state, reward, done = self.env.P[s][a][0]
-                q += p*(reward + self.gamma * self.v[next_state] * (1-done))
+                q = p*(reward + self.gamma * self.v[next_state] * (1-done))
                 q_list.append(q)
             max_q = max(q_list)
             max_q_cnt = q_list.count(max_q)

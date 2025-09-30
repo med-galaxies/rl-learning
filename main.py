@@ -47,8 +47,8 @@ def render_pic(agent, optimal_pi):
 def main():
     #env = CliffWalkingEnv()
     env = gym.make(
-        'CliffWalking-v0',
-        #'FrozenLake-v1',
+        #'CliffWalking-v0',
+        'FrozenLake-v1',
         #map_name="4x4",
         is_slippery=True,
         render_mode="human"
@@ -59,7 +59,12 @@ def main():
     action_meaning = ['^', 'v', '<', '>']
     theta = 0.001
     gamma = 0.9
-    nrow, ncol = env.unwrapped.shape
+
+    if hasattr(env, 'shape'):
+        nrow, ncol = env.shape
+    else:
+        nrow, ncol = env.nrow, env.ncol
+    
     agent = PolicyIteration(env, theta, gamma, nrow, ncol)
     optimal_pi, optimal_v = agent.policy_iteration()
     print_agent(agent, action_meaning, list(range(37, 47)), [47], nrow, ncol)
