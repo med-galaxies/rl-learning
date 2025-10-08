@@ -1,6 +1,8 @@
 from env import CliffWalkingEnv
 from policy import PolicyIteration
 from value import ValueIteration
+from sarsa import Sarsa
+from train_model import train_model
 import gymnasium as gym
 import time
 
@@ -65,15 +67,27 @@ def main():
     else:
         nrow, ncol = env.nrow, env.ncol
     
-    agent = PolicyIteration(env, theta, gamma, nrow, ncol)
-    optimal_pi, optimal_v = agent.policy_iteration()
-    print_agent(agent, action_meaning, list(range(37, 47)), [47], nrow, ncol)
-    render_pic(agent, optimal_pi)
+    # agent = PolicyIteration(env, theta, gamma, nrow, ncol)
+    # optimal_pi, optimal_v = agent.policy_iteration()
+    # print_agent(agent, action_meaning, list(range(37, 47)), [47], nrow, ncol)
+    # render_pic(agent, optimal_pi)
 
-    agent2 = ValueIteration(env, theta, gamma, nrow, ncol)
-    optimal_pi2 = agent2.value_iteration()
-    print_agent(agent2, action_meaning, list(range(37, 47)), [47], nrow, ncol)
-    render_pic(agent2, optimal_pi2)
+    # agent2 = ValueIteration(env, theta, gamma, nrow, ncol)
+    # optimal_pi2 = agent2.value_iteration()
+    # print_agent(agent2, action_meaning, list(range(37, 47)), [47], nrow, ncol)
+    # render_pic(agent2, optimal_pi2)
+
+    train_model(
+        ncol,
+        nrow,
+        env,
+        epsilon=0.1,
+        alpha=0.1,
+        gamma=gamma,
+        num_episodes=500,
+        agent=Sarsa(ncol, nrow, epsilon=0.1, alpha=0.1, gamma=gamma)
+    )
+
     env.close()
 
 if __name__ == "__main__":
