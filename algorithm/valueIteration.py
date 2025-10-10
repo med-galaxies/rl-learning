@@ -19,6 +19,8 @@ class ValueIteration:
                 v_list = []
                 for a in range(4):
                     p, next_state, reward, done = self.env.P[s][a][0]
+                    if reward == -100:
+                        reward = -5
                     v = reward + p * self.gamma * self.v[next_state] * (1-done)
                     v_list.append(v)
                 new_v[s] = max(v_list)
@@ -38,6 +40,8 @@ class ValueIteration:
             for a in range(4):
                 q = 0
                 p, next_state, reward, done = self.env.P[s][a][0]
+                if reward == -100:
+                    reward = -5
                 q += p*(reward + self.gamma * self.v[next_state] * (1-done))
                 q_list.append(q)
             max_q = max(q_list)

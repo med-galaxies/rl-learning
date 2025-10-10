@@ -2,7 +2,7 @@ import copy
 import time
 class PolicyIteration:
     """ 策略迭代算法 """
-    def __init__(self, env, theta, gamma, nrow, ncol):
+    def __init__(self, env, theta, gamma, nrow, ncol, lambda_risk=0.1):
         self.env = env
         self.nrow = nrow
         self.ncol = ncol
@@ -11,6 +11,7 @@ class PolicyIteration:
                    for i in range(self.ncol * self.nrow)]  # 初始化为均匀随机策略
         self.theta = theta  # 策略评估收敛阈值
         self.gamma = gamma  # 折扣因子
+        self.lambda_risk = lambda_risk 
 
     def policy_evaluation(self):  # 策略评估
         cnt = 1  # 计数器
@@ -19,9 +20,13 @@ class PolicyIteration:
             max_diff = 0
             for s in range(self.ncol * self.nrow):
                 q_list = []
+                min_reward = float("inf")
                 for a in range(4):
                     p, next_state, reward, done = self.env.P[s][a][0]
+                    if reward == -100:
+                        reward = -5
                     q = p*(reward + self.gamma * self.v[next_state] * (1-done))
+                    min_reward = min(min_reward, reward)
                     q_list.append(q*self.pi[s][a])
                 new_v[s] = sum(q_list)
                 max_diff = max(max_diff, abs(new_v[s] - self.v[s]))
@@ -34,9 +39,13 @@ class PolicyIteration:
     def policy_improvement(self):  # 策略提升
         for s in range(self.ncol * self.nrow):
             q_list = []
+            min_reward = float("inf")
             for a in range(4):
                 p, next_state, reward, done = self.env.P[s][a][0]
+                if reward == -100:
+                    reward = -5
                 q = p*(reward + self.gamma * self.v[next_state] * (1-done))
+                min_reward = min(min_reward, reward)
                 q_list.append(q)
             max_q = max(q_list)
             max_q_cnt = q_list.count(max_q)
