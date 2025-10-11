@@ -2,7 +2,7 @@ from envs.env import CliffWalkingEnv
 from algorithm.policyIteration import PolicyIteration
 from algorithm.valueIteration import ValueIteration
 from algorithm.sarsa import Sarsa
-from utils.modelTrain import trainingSarsa, trainingQlearning, trainDynaQ, trainNStepSarsa
+from utils.modelTrain import trainingSarsa, trainingQlearning, trainDynaQ, trainNStepSarsa, trainingDQN
 from algorithm.qLearning import QLearning
 import gymnasium as gym
 import time
@@ -77,13 +77,14 @@ def modify_hole_reward(env, nrow, ncol, hole_penalty=-1.0):
 
 def main():
     #env = CliffWalkingEnv()
-    env = gym.make(
-        'CliffWalking-v0',
-        #'FrozenLake-v1',
-        #map_name="4x4",
-        is_slippery=False,
-        render_mode="human"
-    )
+    # env = gym.make(
+    #     'CliffWalking-v0',
+    #     #'FrozenLake-v1',
+    #     #map_name="4x4",
+    #     is_slippery=False,
+    #     render_mode="human"
+    # )
+    env = gym.make("CartPole-v1", render_mode="rgb_array")
     env = env.unwrapped  # 解封装才能访问状态转移矩阵P
     env.reset()
     env.render()
@@ -92,10 +93,11 @@ def main():
     gamma = 0.9
     num_eposide=500
 
-    if hasattr(env, 'shape'):
-        nrow, ncol = env.shape
-    else:
-        nrow, ncol = env.nrow, env.ncol
+    # if hasattr(env, 'shape'):
+    #     nrow, ncol = env.shape
+    # else:
+    #     nrow, ncol = env.nrow, env.ncol
+    
     #env = modify_hole_reward(env, nrow, ncol, -0.6)
     # agent = PolicyIteration(env, theta, gamma, nrow, ncol)
     # optimal_pi, optimal_v = agent.policy_iteration()
@@ -118,8 +120,8 @@ def main():
     # print_agent(agent2, action_meaning, nrow, ncol, list(range(37, 47)), [47])
 
     #trainNStepSarsa(env)
-    trainDynaQ(env)
-
+    #trainDynaQ(env)
+    trainingDQN(env)
     env.close()
 
 if __name__ == "__main__":
