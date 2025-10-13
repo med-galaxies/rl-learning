@@ -14,25 +14,6 @@ class QNet(torch.nn.Module):
     def forward(self, x):
         x = F.relu(self.fc1(x))
         return self.fc2(x)
-
-class ReplayBuffer:
-    ''' 经验回放池 '''
-    def __init__(self, capacity):
-        self.buffer = collections.deque(maxlen=capacity)  # 队列,先进先出
-
-    def add(self, state, action, reward, next_state, done):  # 将数据加入buffer
-        if type(state) is tuple:
-            state = state[0]
-        self.buffer.append((state, action, reward, next_state, done))
-
-    def sample(self, batch_size):  # 从buffer中采样数据,数量为batch_size
-        transitions = random.sample(self.buffer, batch_size)
-        state, action, reward, next_state, done = zip(*transitions)
-        #print(f"buffer state sampling:{state}")
-        return np.array(state), action, reward, np.array(next_state), done
-
-    def size(self):  # 目前buffer中数据的数量
-        return len(self.buffer)
     
 
 class DQN:
@@ -52,6 +33,7 @@ class DQN:
         self.target_update = target_update  # 目标网络更新频率
         self.count = 0  # 计数器,记录更新次数
         self.device = device
+        self.loss_list = []
 
     def take_action(self, state):
 
@@ -66,23 +48,52 @@ class DQN:
             action = self.q_net(state).argmax().item()
         return action
     
-    def update(self, transition_dict):
-        if type(transition_dict['states']) is tuple:
-            states = torch.from_numpy(transition_dict['states'][0]).to(self.device)
-        elif isinstance(transition_dict['states'], np.ndarray):
-            states = torch.from_numpy(transition_dict['states']).to(self.device)
-        actions = torch.tensor(transition_dict['actions']).view(1, -1).to(self.device)
-        rewards = torch.tensor(transition_dict['rewards'], dtype=torch.float).view(1,-1).to(self.device)
-        next_states = torch.tensor(transition_dict['next_states']).to(self.device)
-        dones = torch.tensor(transition_dict['dones']).view(1,-1).to(self.device)
+    # def update(self, transition_dict):
+    #     if type(transition_dict['states']) is tuple:
+    #         states = torch.from_numpy(transition_dict['states'][0]).to(self.device)
+    #     elif isinstance(transition_dict['states'], np.ndarray):
+    #         states = torch.from_numpy(transition_dict['states']).to(self.device)
+    #     actions = torch.tensor(transition_dict['actions']).view(-1, 1).to(self.device)
+    #     rewards = torch.tensor(transition_dict['rewards'], dtype=torch.float).view(-1,1).to(self.device)
+    #     next_states = torch.tensor(transition_dict['next_states']).to(self.device)
+    #     dones = torch.tensor(transition_dict['dones']).view(-1,1).to(self.device)
 
-        max_target_q = self.target_q_net(next_states).max(1)[0].view(1,-1).to(self.device)
-        whole_target_q = rewards + self.gamma * max_target_q * (~dones).float()   
-        q = self.q_net(states).view(1, -1).gather(1, actions).to(self.device)
-        loss = torch.mean(F.mse_loss(whole_target_q, q))
+    #     max_target_q = self.target_q_net(next_states).max(1)[0].view(-1,1).to(self.device)
+    #     whole_target_q = rewards + self.gamma * max_target_q * (1-dones.float()) 
+    #     q = self.q_net(states).gather(1, actions)
+    #     loss = torch.mean(F.mse_loss(q, whole_target_q))
+    #     self.optimizer.zero_grad()
+    #     loss.backward()
+    #     self.optimizer.step()
+    #     self.loss_list.append(loss.item())
+    #     if self.count % self.target_update == 0:
+    #         self.target_q_net.load_state_dict(self.q_net.state_dict())
+    #     self.count += 1
+
+
+    def update(self, transition_dict):
+        states = torch.tensor(transition_dict['states'], dtype=torch.float32).to(self.device)
+        actions = torch.tensor(transition_dict['actions']).view(-1, 1).to(self.device)
+        rewards = torch.tensor(transition_dict['rewards'], dtype=torch.float32).view(-1, 1).to(self.device)
+        next_states = torch.tensor(transition_dict['next_states'], dtype=torch.float32).to(self.device)
+        dones = torch.tensor(transition_dict['dones'], dtype=torch.float32).view(-1, 1).to(self.device)
+
+        q_values = self.q_net(states).gather(1, actions)
+        
+        with torch.no_grad():
+            max_next_q_values = self.target_q_net(next_states).max(1)[0].view(-1, 1)
+            target_q_values = rewards + self.gamma * max_next_q_values * (1 - dones)
+        
+        loss = F.mse_loss(q_values, target_q_values)
+        
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
+        self.loss_list.append(loss.item())
+        
         if self.count % self.target_update == 0:
             self.target_q_net.load_state_dict(self.q_net.state_dict())
         self.count += 1
+        
+        return loss.item()
+    

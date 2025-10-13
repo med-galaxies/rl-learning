@@ -3,20 +3,25 @@ import numpy as np
 import torch
 import collections
 import random
+import matplotlib.pyplot as plt
 
 class ReplayBuffer:
+    ''' 经验回放池 '''
     def __init__(self, capacity):
-        self.buffer = collections.deque(maxlen=capacity) 
+        self.buffer = collections.deque(maxlen=capacity)  # 队列,先进先出
 
-    def add(self, state, action, reward, next_state, done): 
-        self.buffer.append((state, action, reward, next_state, done)) 
+    def add(self, state, action, reward, next_state, done):  # 将数据加入buffer
+        if type(state) is tuple:
+            state = state[0]
+        self.buffer.append((state, action, reward, next_state, done))
 
-    def sample(self, batch_size): 
+    def sample(self, batch_size):  # 从buffer中采样数据,数量为batch_size
         transitions = random.sample(self.buffer, batch_size)
         state, action, reward, next_state, done = zip(*transitions)
-        return np.array(state), action, reward, np.array(next_state), done 
+        #print(f"buffer state sampling:{state}")
+        return np.array(state), action, reward, np.array(next_state), done
 
-    def size(self): 
+    def size(self):  # 目前buffer中数据的数量
         return len(self.buffer)
 
 def moving_average(a, window_size):
@@ -87,4 +92,24 @@ def compute_advantage(gamma, lmbda, td_delta):
         advantage_list.append(advantage)
     advantage_list.reverse()
     return torch.tensor(advantage_list, dtype=torch.float)
+
+
+def smooth_curve(data, smoothing=10):
+    smoothed = []
+    for i in range(len(data)):
+        start = max(0, i - smoothing + 1)
+        smoothed.append(np.mean(data[start:i+1]))
+    return smoothed
+
+def show_loss(data, smoothing=50):
+    smoothed_loss = smooth_curve(data, smoothing)
+
+    plt.figure()
+    plt.plot(data, alpha=0.3, label='Raw loss')
+    plt.plot(smoothed_loss, color='red', label='Smoothed loss')
+    plt.title("DQN Loss (Raw vs Smoothed)")
+    plt.xlabel("Training Step")
+    plt.ylabel("Loss")
+    plt.legend()
+    plt.show()
                 

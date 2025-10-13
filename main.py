@@ -84,10 +84,12 @@ def main():
     #     is_slippery=False,
     #     render_mode="human"
     # )
-    env = gym.make("CartPole-v1", render_mode="rgb_array")
+    env = gym.make("CartPole-v1", render_mode="human")
     env = env.unwrapped  # 解封装才能访问状态转移矩阵P
     env.reset()
     env.render()
+    print(f"最大步数限制: {env.spec.max_episode_steps}")  # 应该是500
+    print(f"奖励阈值: {env.spec.reward_threshold}") 
     action_meaning = ['^', '>', 'v', '<']
     theta = 0.001
     gamma = 0.9
@@ -97,7 +99,7 @@ def main():
     #     nrow, ncol = env.shape
     # else:
     #     nrow, ncol = env.nrow, env.ncol
-    
+
     #env = modify_hole_reward(env, nrow, ncol, -0.6)
     # agent = PolicyIteration(env, theta, gamma, nrow, ncol)
     # optimal_pi, optimal_v = agent.policy_iteration()

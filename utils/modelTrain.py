@@ -4,7 +4,8 @@ import torch, random, time
 from tqdm import tqdm  
 from algorithm.nStepSarsa import NStepSarsa
 from algorithm.dynaQ import DynaQ
-from algorithm.DQN import DQN, ReplayBuffer
+from algorithm.DQN import DQN
+from algorithm.doubleDQN import DoubleDQN
 from utils import rl_utils
 def trainingSarsa(env, agent, num_episodes=500):
 
@@ -185,14 +186,14 @@ def trainingDQN(env, num_episodes=500):
     buffer_size = 10000
     minimal_size = 500
     batch_size = 64
-    device = torch.device("cuda") if torch.cuda.is_available() else torch.device(
+    device = torch.device("xpu") if torch.xpu.is_available() else torch.device(
         "cpu")
 
     random.seed(0)
     np.random.seed(0)
     torch.manual_seed(0)
 
-    replay_buffer = ReplayBuffer(buffer_size)
+    replay_buffer = rl_utils.ReplayBuffer(buffer_size)
     state_dim = env.observation_space.shape[0]
     action_dim = env.action_space.n
     agent = DQN(state_dim, hidden_dim, action_dim, lr, gamma, epsilon,
@@ -205,13 +206,17 @@ def trainingDQN(env, num_episodes=500):
                 episode_return = 0
                 state = env.reset()
                 done = False
+                env_step = 0
                 while not done:
                     action = agent.take_action(state)
                     next_state, reward, terminated, truncated, _ = env.step(action)
                     done = terminated or truncated
+                    if env_step >= 500:
+                        done = True
                     replay_buffer.add(state, action, reward, next_state, done)
                     state = next_state
                     episode_return += reward
+                    env_step += 1
                     # 当buffer数据的数量超过一定值后,才进行Q网络训练
                     if replay_buffer.size() > minimal_size:
                         b_s, b_a, b_r, b_ns, b_d = replay_buffer.sample(batch_size)
@@ -223,6 +228,7 @@ def trainingDQN(env, num_episodes=500):
                             'dones': b_d
                         }
                         agent.update(transition_dict)
+                        
                 return_list.append(episode_return)
                 if (i_episode + 1) % 10 == 0:
                     pbar.set_postfix({
@@ -233,6 +239,8 @@ def trainingDQN(env, num_episodes=500):
                     })
                 pbar.update(1)
     
+    rl_utils.show_loss(agent.loss_list)
+
     episodes_list = list(range(len(return_list)))
     plt.plot(episodes_list, return_list)
     plt.xlabel('Episodes')
@@ -246,5 +254,81 @@ def trainingDQN(env, num_episodes=500):
     plt.ylabel('Returns')
     plt.title('DQN')
     plt.show()
+
+
+def trainingDoubleDQN(env, episodes_num=500):
+    lr = 2e-3
+    num_episodes = 500
+    hidden_dim = 128
+    gamma = 0.98
+    epsilon = 0.01
+    update_freq = 10
+    buffer_size = 10000
+    minimal_size = 500
+    batch_size = 64
+    device = torch.device("xpu") if torch.xpu.is_available() else torch.device(
+        "cpu")
+
+    random.seed(0)
+    np.random.seed(0)
+    torch.manual_seed(0)
+
+    replay_buffer = rl_utils.ReplayBuffer(buffer_size)
+    state_dim = env.observation_space.shape[0]
+    action_dim = env.action_space.n
+    agent = DoubleDQN(state_dim, hidden_dim, action_dim, lr, gamma, epsilon,
+                      update_freq, device)
+    return_list = []
+    for iteration in range(10):
+        with tqdm(total=int(episodes_num / 10), desc='Iteration %d' % iteration) as pbar:
+            for episode in range(int(episodes_num / 10)):
+                episode_return = 0
+                state = env.reset()
+                done = False
+                env_step = 0
+                while not done:
+                    action = agent.take_action(state)
+                    next_state, reward, terminated, truncated, _ = env.step(action)
+                    done = terminated or truncated or (env_step >= 500)
+                    replay_buffer.add(state, action, reward, next_state, done)
+                    state = next_state
+                    episode_return += reward
+                    env_step += 1
+
+                    if replay_buffer.size() > minimal_size:
+                        b_s, b_a, b_r, b_ns, b_d = replay_buffer.sample(batch_size)
+                        transition_dict = {
+                            'states': b_s,
+                            'actions': b_a,
+                            'next_states': b_ns,
+                            'rewards': b_r,
+                            'dones': b_d
+                        }
+                        agent.update(transition_dict)
+                return_list.append(episode_return)
+                if (episode+1) % 10 == 0:
+                    pbar.set_postfix({
+                        'episode':
+                        '%d' % (num_episodes / 10 * iteration + episode + 1),
+                        'return':
+                        '%.3f' % np.mean(return_list[-10:])
+                    })
+                pbar.update(1)
+    rl_utils.show_loss(agent.loss_list)
+    episodes_list = list(range(len(return_list)))
+    plt.plot(episodes_list, return_list)
+    plt.xlabel('Episodes')
+    plt.ylabel('Returns')
+    plt.title('DQN')
+    plt.show()
+
+    mv_return = rl_utils.moving_average(return_list, 9)
+    plt.plot(episodes_list, mv_return)
+    plt.xlabel('Episodes')
+    plt.ylabel('Returns')
+    plt.title('DQN')
+    plt.show()
+
+
 
     
