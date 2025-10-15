@@ -12,6 +12,7 @@ class QNet(torch.nn.Module):
         self.fc2 = torch.nn.Linear(hidden_dim, action_dim)
 
     def forward(self, x):
+        #print(f"形状 {x.shape}, 维度 {x.dim()} {x}")
         x = F.relu(self.fc1(x))
         return self.fc2(x)
     
@@ -48,28 +49,12 @@ class DQN:
             action = self.q_net(state).argmax().item()
         return action
     
-    # def update(self, transition_dict):
-    #     if type(transition_dict['states']) is tuple:
-    #         states = torch.from_numpy(transition_dict['states'][0]).to(self.device)
-    #     elif isinstance(transition_dict['states'], np.ndarray):
-    #         states = torch.from_numpy(transition_dict['states']).to(self.device)
-    #     actions = torch.tensor(transition_dict['actions']).view(-1, 1).to(self.device)
-    #     rewards = torch.tensor(transition_dict['rewards'], dtype=torch.float).view(-1,1).to(self.device)
-    #     next_states = torch.tensor(transition_dict['next_states']).to(self.device)
-    #     dones = torch.tensor(transition_dict['dones']).view(-1,1).to(self.device)
-
-    #     max_target_q = self.target_q_net(next_states).max(1)[0].view(-1,1).to(self.device)
-    #     whole_target_q = rewards + self.gamma * max_target_q * (1-dones.float()) 
-    #     q = self.q_net(states).gather(1, actions)
-    #     loss = torch.mean(F.mse_loss(q, whole_target_q))
-    #     self.optimizer.zero_grad()
-    #     loss.backward()
-    #     self.optimizer.step()
-    #     self.loss_list.append(loss.item())
-    #     if self.count % self.target_update == 0:
-    #         self.target_q_net.load_state_dict(self.q_net.state_dict())
-    #     self.count += 1
-
+    def max_q_value(self, state):
+        #print(f"state: {state}")
+        if type(state) is tuple:
+            state = state[0]
+        state = torch.tensor(state, dtype=torch.float32)
+        return self.q_net(state).max().item()
 
     def update(self, transition_dict):
         states = torch.tensor(transition_dict['states'], dtype=torch.float32).to(self.device)

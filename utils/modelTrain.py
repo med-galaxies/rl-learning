@@ -19,14 +19,16 @@ def trainingSarsa(env, agent, num_episodes=500):
                 state = env.reset()
                 action = agent.take_action(state)
                 done = False
+                env_step = 0
                 while not done:
                     next_state, reward, terminated, truncated, _ = env.step(action)
-                    done = terminated or truncated
+                    done = terminated or truncated or env_step >= 500
                     next_action = agent.take_action(next_state)
                     episode_return += reward  # 这里回报的计算不进行折扣因子衰减
                     agent.update(state, action, reward, next_state, next_action)
                     state = next_state
                     action = next_action
+                    env_step += 1
                 return_list.append(episode_return)
                 if (i_episode + 1) % 10 == 0:  # 每10条序列打印一下这10条序列的平均回报
                     pbar.set_postfix({
@@ -56,14 +58,16 @@ def trainingQlearning(env, agent, num_episodes=500):
                 state = env.reset()
                 action = agent.take_action(state)
                 done = False
+                env_step = 0
                 while not done:
                     next_state, reward, terminated, truncated, _ = env.step(action)
-                    done = terminated or truncated
+                    done = terminated or truncated or env_step >= 500
                     next_action = agent.take_action(next_state)
                     episode_return += reward  # 这里回报的计算不进行折扣因子衰减
                     agent.update(state, action, reward, next_state)
                     state = next_state
                     action = next_action
+                    env_step += 1
                 return_list.append(episode_return)
                 if (i_episode + 1) % 10 == 0:  # 每10条序列打印一下这10条序列的平均回报
                     pbar.set_postfix({
@@ -176,7 +180,7 @@ def trainNStepSarsa(env, num_eposides=500):
     plt.show()
 
 
-def trainingDQN(env, num_episodes=500):
+def trainingDQN(env, env_name, num_episodes=500):
     lr = 2e-3
     num_episodes = 500
     hidden_dim = 128
@@ -195,11 +199,18 @@ def trainingDQN(env, num_episodes=500):
 
     replay_buffer = rl_utils.ReplayBuffer(buffer_size)
     state_dim = env.observation_space.shape[0]
-    action_dim = env.action_space.n
+    
+    if "Pendulum" in env_name:
+        action_dim = 11
+    else:
+        action_dim = env.action_space.n
+
     agent = DQN(state_dim, hidden_dim, action_dim, lr, gamma, epsilon,
                 target_update, device)
 
     return_list = []
+    q_value_list = []
+    max_q_value = 0
     for i in range(10):
         with tqdm(total=int(num_episodes / 10), desc='Iteration %d' % i) as pbar:
             for i_episode in range(int(num_episodes / 10)):
@@ -209,10 +220,17 @@ def trainingDQN(env, num_episodes=500):
                 env_step = 0
                 while not done:
                     action = agent.take_action(state)
-                    next_state, reward, terminated, truncated, _ = env.step(action)
-                    done = terminated or truncated
-                    if env_step >= 500:
-                        done = True
+                    max_q_value = agent.max_q_value(
+                        state) * 0.005 + max_q_value * 0.995  # 平滑处理
+                    q_value_list.append(max_q_value) 
+                    if "Pendulum" in env_name:
+                        action_continuous = rl_utils.dis_to_con(action, env, agent.action_dim)
+                        next_state, reward, terminated, truncated, _ = env.step([action_continuous])
+                        done = terminated or truncated or (env_step >= 200)
+                    else:
+                        next_state, reward, terminated, truncated, _ = env.step(action)
+                        done = terminated or truncated or (env_step >= 500)
+
                     replay_buffer.add(state, action, reward, next_state, done)
                     state = next_state
                     episode_return += reward
@@ -255,8 +273,17 @@ def trainingDQN(env, num_episodes=500):
     plt.title('DQN')
     plt.show()
 
+    frames_list = list(range(len(q_value_list)))
+    plt.plot(frames_list, q_value_list)
+    plt.axhline(0, c='orange', ls='--')
+    plt.axhline(10, c='red', ls='--')
+    plt.xlabel('Frames')
+    plt.ylabel('Q value')
+    plt.title('DQN on {}'.format(env_name))
+    plt.show()
 
-def trainingDoubleDQN(env, episodes_num=500):
+
+def trainingDoubleDQN(env, env_name, episodes_num=500):
     lr = 2e-3
     num_episodes = 500
     hidden_dim = 128
@@ -275,10 +302,16 @@ def trainingDoubleDQN(env, episodes_num=500):
 
     replay_buffer = rl_utils.ReplayBuffer(buffer_size)
     state_dim = env.observation_space.shape[0]
-    action_dim = env.action_space.n
+    if "Pendulum" in env_name:
+        action_dim = 11
+    else:
+        action_dim = env.action_space.n
+
     agent = DoubleDQN(state_dim, hidden_dim, action_dim, lr, gamma, epsilon,
                       update_freq, device)
     return_list = []
+    q_value_list = []
+    max_q_value = 0
     for iteration in range(10):
         with tqdm(total=int(episodes_num / 10), desc='Iteration %d' % iteration) as pbar:
             for episode in range(int(episodes_num / 10)):
@@ -288,8 +321,16 @@ def trainingDoubleDQN(env, episodes_num=500):
                 env_step = 0
                 while not done:
                     action = agent.take_action(state)
-                    next_state, reward, terminated, truncated, _ = env.step(action)
-                    done = terminated or truncated or (env_step >= 500)
+                    max_q_value = agent.max_q_value(
+                        state) * 0.005 + max_q_value * 0.995  # 平滑处理
+                    q_value_list.append(max_q_value) 
+                    if "Pendulum" in env_name:
+                        action_continuous = rl_utils.dis_to_con(action, env, agent.action_dim)
+                        next_state, reward, terminated, truncated, _ = env.step([action_continuous])
+                        done = terminated or truncated or (env_step >= 200)
+                    else:
+                        next_state, reward, terminated, truncated, _ = env.step(action)
+                        done = terminated or truncated or (env_step >= 500)
                     replay_buffer.add(state, action, reward, next_state, done)
                     state = next_state
                     episode_return += reward
@@ -319,16 +360,25 @@ def trainingDoubleDQN(env, episodes_num=500):
     plt.plot(episodes_list, return_list)
     plt.xlabel('Episodes')
     plt.ylabel('Returns')
-    plt.title('DQN')
+    plt.title('Double DQN')
     plt.show()
 
     mv_return = rl_utils.moving_average(return_list, 9)
     plt.plot(episodes_list, mv_return)
     plt.xlabel('Episodes')
     plt.ylabel('Returns')
-    plt.title('DQN')
+    plt.title('Double DQN')
     plt.show()
 
+
+    frames_list = list(range(len(q_value_list)))
+    plt.plot(frames_list, q_value_list)
+    plt.axhline(0, c='orange', ls='--')
+    plt.axhline(10, c='red', ls='--')
+    plt.xlabel('Frames')
+    plt.ylabel('Q value')
+    plt.title('Double DQN on {}'.format(env_name))
+    plt.show()
 
 
     

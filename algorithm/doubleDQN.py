@@ -36,12 +36,21 @@ class DoubleDQN:
         if np.random.random() < self.epsilon:
             action = np.random.randint(self.action_dim)
         else:
-            states = torch.tensor(states, dtype=torch.float32).to(self.device)
+            if type(states) is tuple:
+                states = torch.from_numpy(states[0])
+            elif isinstance(states, np.ndarray):
+                states = torch.from_numpy(states)
             action = self.q_net(states).argmax().item()
         return action
     
+    def max_q_value(self, state):
+        if type(state) is tuple:
+            state = state[0]
+        state = torch.tensor(state, dtype=torch.float32)
+        return self.q_net(state).max().item()
+    
     def update(self, transition_dict):
-        print(f"dict: {transition_dict}")
+        #print(f"dict: {transition_dict}")
         states = torch.tensor(transition_dict["states"], dtype=torch.float32).to(self.device)
         actions = torch.tensor(transition_dict["actions"]).view(-1, 1).to(self.device)
         rewards = torch.tensor(transition_dict["rewards"], dtype=torch.float32).view(-1, 1).to(self.device)
