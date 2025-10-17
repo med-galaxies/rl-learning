@@ -1,9 +1,9 @@
 from envs.env import CliffWalkingEnv
-from algorithm.policyIteration import PolicyIteration
-from algorithm.valueIteration import ValueIteration
+from algorithm.policy_iteration import PolicyIteration
+from algorithm.value_iteration import ValueIteration
 from algorithm.sarsa import Sarsa
-from utils.modelTrain import trainingSarsa, trainingQlearning, trainDynaQ, trainNStepSarsa, trainingDQN, trainingDoubleDQN
-from algorithm.qLearning import QLearning
+from utils.model_train import trainingSarsa, trainingQlearning, trainDynaQ, trainNStepSarsa, trainingDQN, trainingDoubleDQN, trainingReinforce, trainingActorCritic
+from algorithm.q_learning import QLearning
 import gymnasium as gym
 import time
 
@@ -77,14 +77,14 @@ def modify_hole_reward(env, nrow, ncol, hole_penalty=-1.0):
 
 def main():
     #env = CliffWalkingEnv()
-    env = gym.make(
-        'CliffWalking-v0',
-        #'FrozenLake-v1',
-        #map_name="4x4",
-        is_slippery=True,
-        render_mode="human"
-    )
-    #env = gym.make("Pendulum-v1", render_mode="human")
+    # env = gym.make(
+    #     'CliffWalking-v0',
+    #     #'FrozenLake-v1',
+    #     #map_name="4x4",
+    #     is_slippery=True,
+    #     render_mode="human"
+    # )
+    env = gym.make("Pendulum-v1", render_mode="human")
     env = env.unwrapped  # 解封装才能访问状态转移矩阵P
     env.reset()
     env.render()
@@ -95,10 +95,10 @@ def main():
     gamma = 0.9
     num_eposide=500
 
-    if hasattr(env, 'shape'):
-        nrow, ncol = env.shape
-    else:
-        nrow, ncol = env.nrow, env.ncol
+    # if hasattr(env, 'shape'):
+    #     nrow, ncol = env.shape
+    # else:
+    #     nrow, ncol = env.nrow, env.ncol
 
     #env = modify_hole_reward(env, nrow, ncol, -0.6)
     # agent = PolicyIteration(env, theta, gamma, nrow, ncol)
@@ -111,23 +111,23 @@ def main():
     # print_agent(agent2, action_meaning, list(range(37, 47)), [47], nrow, ncol)
     # render_pic(agent2, optimal_pi2)
 
-    agent = Sarsa(nrow, ncol, 0.1, 0.1, 0.9)
-    agent2 = QLearning(ncol, nrow, 0.1, 0.1, 0.9)
-    trainingSarsa(env,agent, num_eposide)
-    print("Sarsa收敛策略:")
-    print_agent(agent, action_meaning, nrow, ncol, list(range(37, 47)), [47])
+    # agent = Sarsa(nrow, ncol, 0.1, 0.1, 0.9)
+    # agent2 = QLearning(ncol, nrow, 0.1, 0.1, 0.9)
+    # trainingSarsa(env,agent, num_eposide)
+    # print("Sarsa收敛策略:")
+    # print_agent(agent, action_meaning, nrow, ncol, list(range(37, 47)), [47])
 
-    trainingQlearning(env, agent2, num_eposide)
+    # trainingQlearning(env, agent2, num_eposide)
 
-    print("Q-Learning收敛策略:")
-    print_agent(agent2, action_meaning, nrow, ncol, list(range(37, 47)), [47])
+    # print("Q-Learning收敛策略:")
+    # print_agent(agent2, action_meaning, nrow, ncol, list(range(37, 47)), [47])
 
     #trainNStepSarsa(env)
     #trainDynaQ(env)
-    # trainingDQN(env, "Pendulum-v1")
-    #trainingDoubleDQN(env, "lake")
-
-
+    #trainingDQN(env, "Pendulum-v1")
+    #trainingDoubleDQN(env, "Pendulum-v1")
+    #trainingReinforce(env, "Pendulum-v1")
+    trainingActorCritic(env, "Pendulum-v1")
 
 
     env.close()

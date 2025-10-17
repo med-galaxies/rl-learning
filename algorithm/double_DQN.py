@@ -16,18 +16,35 @@ class QNet(nn.Module):
     def forward(self, x):
         return self.model(x)
     
+class VANet(nn.Module):
+    def __init__(self, state_dim, hidden_dim, action_dim):
+        super(VANet, self).__init__()
+        self.shared_fc = nn.Linear(state_dim, hidden_dim)
+        self.v_fc = nn.Linear(hidden_dim, action_dim)
+        self.a_fc = nn.Linear(hidden_dim, 1)
+    
+    def forward(self, x):
+        A = self.a_fc(F.relu(self.shared_fc(x)))
+        V = self.v_fc(F.relu(self.shared_fc(x)))
+        Q = V + A - A.mean(1).view(-1, 1)
+        return Q
+    
 class DoubleDQN:
 
     def __init__(self, state_dim, hidden_dim, action_dim, learning_rate, gamma,
-                 epsilon, update_freq, device):
+                 epsilon, update_freq, device, type="dueling"):
         self.action_dim = action_dim
         self.learning_rate = learning_rate
         self.gamma = gamma
         self.epsilon = epsilon
         self.update_freq = update_freq
         self.device = device
-        self.q_net = QNet(state_dim, hidden_dim, action_dim).to(device)
-        self.q_target_net = QNet(state_dim, hidden_dim, action_dim).to(device)
+        if type == "dueling":
+            self.q_net = VANet(state_dim, hidden_dim, action_dim).to(device)
+            self.q_target_net = VANet(state_dim, hidden_dim, action_dim).to(device)
+        else:
+            self.q_net = QNet(state_dim, hidden_dim, action_dim).to(device)
+            self.q_target_net = QNet(state_dim, hidden_dim, action_dim).to(device)
         self.optimizer = torch.optim.Adam(self.q_net.parameters(), lr=learning_rate)
         self.count = 0
         self.loss_list = []
@@ -37,16 +54,16 @@ class DoubleDQN:
             action = np.random.randint(self.action_dim)
         else:
             if type(states) is tuple:
-                states = torch.from_numpy(states[0])
+                states = torch.tensor([states[0]], dtype=torch.float32)
             elif isinstance(states, np.ndarray):
-                states = torch.from_numpy(states)
+                states = torch.tensor([states], dtype=torch.float32)
             action = self.q_net(states).argmax().item()
         return action
     
     def max_q_value(self, state):
         if type(state) is tuple:
             state = state[0]
-        state = torch.tensor(state, dtype=torch.float32)
+        state = torch.tensor([state], dtype=torch.float32)
         return self.q_net(state).max().item()
     
     def update(self, transition_dict):

@@ -2,10 +2,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch, random, time
 from tqdm import tqdm  
-from algorithm.nStepSarsa import NStepSarsa
-from algorithm.dynaQ import DynaQ
+from algorithm.n_step_sarsa import NStepSarsa
+from algorithm.dyna_Q import DynaQ
 from algorithm.DQN import DQN
-from algorithm.doubleDQN import DoubleDQN
+from algorithm.double_DQN import DoubleDQN
+from algorithm.reinforce import Reinforce
+from algorithm.actor_critic import ActorCritic
 from utils import rl_utils
 def trainingSarsa(env, agent, num_episodes=500):
 
@@ -380,5 +382,176 @@ def trainingDoubleDQN(env, env_name, episodes_num=500):
     plt.title('Double DQN on {}'.format(env_name))
     plt.show()
 
+def trainingReinforce(env, env_name, num_episodes=1000):
+    learning_rate = 1e-3
+    hidden_dim = 128
+    gamma = 0.98
+    device = torch.device("xpu") if torch.cuda.is_available() else torch.device(
+        "cpu")
 
-    
+    torch.manual_seed(0)
+    state_dim = env.observation_space.shape[0]
+    if "Pendulum" in env_name:
+        action_dim = 11
+    else:
+        action_dim = env.action_space.n
+    agent = Reinforce(state_dim, hidden_dim, action_dim, learning_rate, gamma,
+                    device)
+
+    return_list = []
+    q_value_list = []
+    max_q_value = 0
+    for i in range(10):
+        with tqdm(total=int(num_episodes / 10), desc='Iteration %d' % i) as pbar:
+            for i_episode in range(int(num_episodes / 10)):
+                episode_return = 0
+                transition_dict = {
+                    'states': [],
+                    'actions': [],
+                    'next_states': [],
+                    'rewards': [],
+                    'dones': []
+                }
+                state = env.reset()
+                done = False
+                env_step = 0
+                while not done:
+                    action = agent.take_action(state)
+                    if "Pendulum" in env_name:
+                        action_continuous = rl_utils.dis_to_con(action, env, action_dim)
+                        next_state, reward, terminated, truncated, _ = env.step([action_continuous])
+                        done = terminated or truncated or (env_step >= 200)
+                    else:
+                        next_state, reward, terminated, truncated, _ = env.step(action)
+                        done = terminated or truncated or (env_step >= 500)
+                    transition_dict['states'].append(state)
+                    transition_dict['actions'].append(action)
+                    transition_dict['next_states'].append(next_state)
+                    transition_dict['rewards'].append(reward)
+                    transition_dict['dones'].append(done)
+                    state = next_state
+                    episode_return += reward
+                    env_step += 1
+                return_list.append(episode_return)
+                agent.update(transition_dict)
+                if (i_episode + 1) % 10 == 0:
+                    pbar.set_postfix({
+                        'episode':
+                        '%d' % (num_episodes / 10 * i + i_episode + 1),
+                        'return':
+                        '%.3f' % np.mean(return_list[-10:])
+                    })
+                pbar.update(1)
+
+    rl_utils.show_loss(agent.loss_list)
+    episodes_list = list(range(len(return_list)))
+    plt.plot(episodes_list, return_list)
+    plt.xlabel('Episodes')
+    plt.ylabel('Returns')
+    plt.title('REINFORCE')
+    plt.show()
+
+    mv_return = rl_utils.moving_average(return_list, 9)
+    plt.plot(episodes_list, mv_return)
+    plt.xlabel('Episodes')
+    plt.ylabel('Returns')
+    plt.title('REINFORCE')
+    plt.show()
+
+
+    frames_list = list(range(len(q_value_list)))
+    plt.plot(frames_list, q_value_list)
+    plt.axhline(0, c='orange', ls='--')
+    plt.axhline(10, c='red', ls='--')
+    plt.xlabel('Frames')
+    plt.ylabel('Q value')
+    plt.title('REINFORCE on {}'.format(env_name))
+    plt.show()
+
+
+def trainingActorCritic(env, env_name, num_episodes=1000):
+    actor_lr = 1e-3
+    critic_lr = 1e-2
+    hidden_dim = 128
+    gamma = 0.98
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device(
+        "cpu")
+
+    torch.manual_seed(0)
+    state_dim = env.observation_space.shape[0]
+    if "Pendulum" in env_name:
+        action_dim = 11
+    else:
+        action_dim = env.action_space.n
+    agent = ActorCritic(state_dim, hidden_dim, action_dim, actor_lr, critic_lr,
+                        gamma, device)
+
+    return_list = []
+    max_q_value = 0
+    q_value_list = []
+    for i in range(10):
+        with tqdm(total=int(num_episodes/10), desc='Iteration %d' % i) as pbar:
+            for i_episode in range(int(num_episodes/10)):
+                episode_return = 0
+                transition_dict = {'states': [], 'actions': [], 'next_states': [], 'rewards': [], 'dones': []}
+                state = env.reset()
+                #print(f"initial state: {state}")
+                done = False
+                env_step = 0
+                while not done:
+                    action = agent.take_action(state)
+                    max_q_value = agent.max_q_value(
+                        state) * 0.005 + max_q_value * 0.995  # 平滑处理
+                    q_value_list.append(max_q_value)
+                    #print(f"before state: {state}")
+                    if "Pendulum" in env_name:
+                        action_continuous = rl_utils.dis_to_con(action, env, action_dim)
+                        next_state, reward, terminated, truncated, _ = env.step([action_continuous])
+                        done = terminated or truncated or (env_step >= 200)
+                    else:
+                        next_state, reward, terminated, truncated, _ = env.step(action)
+                        done = terminated or truncated or (env_step >= 500)
+                    #print(f"loop states: {state}")
+                    if type(state) is tuple: 
+                        transition_dict['states'].append(state[0])
+                    else:
+                        transition_dict['states'].append(state)
+                    transition_dict['actions'].append(action)
+                    transition_dict['next_states'].append(next_state)
+                    transition_dict['rewards'].append(reward)
+                    transition_dict['dones'].append(done)
+                    state = next_state
+                    episode_return += reward
+                    env_step += 1
+                return_list.append(episode_return)
+                agent.update(transition_dict)
+                if (i_episode+1) % 10 == 0:
+                    pbar.set_postfix({'episode': '%d' % (num_episodes/10 * i + i_episode+1), 'return': '%.3f' % np.mean(return_list[-10:])})
+                pbar.update(1)
+
+    rl_utils.show_loss(agent.actor_loss_list)
+    rl_utils.show_loss(agent.critic_loss_list)
+
+    episodes_list = list(range(len(return_list)))
+    plt.plot(episodes_list, return_list)
+    plt.xlabel('Episodes')
+    plt.ylabel('Returns')
+    plt.title('Actor-Critic')
+    plt.show()
+
+    mv_return = rl_utils.moving_average(return_list, 9)
+    plt.plot(episodes_list, mv_return)
+    plt.xlabel('Episodes')
+    plt.ylabel('Returns')
+    plt.title('Actor-Critic')
+    plt.show()
+
+
+    frames_list = list(range(len(q_value_list)))
+    plt.plot(frames_list, q_value_list)
+    plt.axhline(0, c='orange', ls='--')
+    plt.axhline(10, c='red', ls='--')
+    plt.xlabel('Frames')
+    plt.ylabel('Q value')
+    plt.title('Actor-Critic on {}'.format(env_name))
+    plt.show()
