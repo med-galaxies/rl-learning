@@ -54,6 +54,7 @@ class ActorCritic:
         state = torch.tensor([state], dtype=torch.float32)
         return self.critic(state).max().item()
     
+    # 关注gymnasium中state新增的info，变为字典，当只需要state这一个array的时候需要注意过滤和统一性
     def update(self, transition_dict):
         #print(f"transition: {transition_dict}")
         # print("States shape:", len(transition_dict['states']))
@@ -64,6 +65,7 @@ class ActorCritic:
             states = torch.tensor(transition_dict['states'][0], dtype=torch.float32).to(self.device)
         else:
             states = torch.tensor(transition_dict['states'], dtype=torch.float32).to(self.device)
+
         actions = torch.tensor(transition_dict['actions']).view(-1, 1).to(self.device)
         rewards = torch.tensor(transition_dict['rewards'], dtype=torch.float32).view(-1, 1).to(self.device)
         next_states = torch.tensor(transition_dict['next_states'], dtype=torch.float32).to(self.device)

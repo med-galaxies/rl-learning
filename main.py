@@ -124,10 +124,10 @@ def main():
 
     #trainNStepSarsa(env)
     #trainDynaQ(env)
-    #trainingDQN(env, "Pendulum-v1")
+    trainingDQN(env, "Pendulum-v1")
     #trainingDoubleDQN(env, "Pendulum-v1")
     #trainingReinforce(env, "Pendulum-v1")
-    trainingActorCritic(env, "Pendulum-v1")
+    #trainingActorCritic(env, "Pendulum-v1", 1500)
 
 
     env.close()

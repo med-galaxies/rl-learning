@@ -23,6 +23,44 @@ class ReplayBuffer:
 
     def size(self):  # 目前buffer中数据的数量
         return len(self.buffer)
+    
+class PrioritizedReplyBuffer:
+    def __init__(self, capacity, alpha=0.6):
+        self.capacity = capacity
+        self.alpha = alpha
+        self.buffer = []
+        self.priorities = np.zeros(capacity, dtype=float)
+        self.pos = 0
+
+    def add(self, state, action, reward, next_state, done, td_error=1):
+        if type(state) is tuple:
+            state = state[0]
+        self.buffer.append((state, action, reward, next_state, done))
+        self.priorities[self.pos] = td_error
+        self.pos = (self.pos + 1) % self.capacity
+
+    def sample(self, batch_size, beta=0.4):
+        p_list = self.priorities[:self.pos]
+        p_list = p_list ** self.alpha
+        p_list /= p_list.sum()
+        # print(f"length p_list: {len(p_list)}, {p_list}")
+        # print(f"length of buffer : {len(self.buffer)}, {self.buffer}")
+
+        idx_list = np.random.choice(len(self.buffer), batch_size, p=p_list)
+        samples = [self.buffer[idx] for idx in idx_list]
+        state, action, reward, next_state, done = zip(*samples)
+
+        weights = (len(self.buffer) * p_list[idx_list]) ** (-beta)
+        weights /= weights.max()
+
+        return np.array(state), action, reward, np.array(next_state), done, idx_list, weights
+    
+    def update_priorities(self, idx_list, td_error_list):
+        for idx, td_error in zip(idx_list, td_error_list):
+            self.priorities[idx] = abs(td_error) + 1e-6
+        
+    def size(self):  # 目前buffer中数据的数量
+        return len(self.buffer)
 
 def moving_average(a, window_size):
     cumulative_sum = np.cumsum(np.insert(a, 0, 0)) 

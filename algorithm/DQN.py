@@ -32,7 +32,7 @@ class VANet(nn.Module):
 
 class DQN:
     def __init__(self, state_dim, hidden_dim, action_dim, learning_rate, gamma,
-                 epsilon, target_update, device, type="dueling"):
+                 epsilon, target_update, device, type="dueling", buffer_type='per'):
         self.action_dim = action_dim
         if type == "dueling":
             self.q_net = VANet(state_dim, hidden_dim,
@@ -54,6 +54,7 @@ class DQN:
         self.target_update = target_update  # 目标网络更新频率
         self.count = 0  # 计数器,记录更新次数
         self.device = device
+        self.buffer_type = buffer_type
         self.loss_list = []
 
     def take_action(self, states):
@@ -82,6 +83,9 @@ class DQN:
         rewards = torch.tensor(transition_dict['rewards'], dtype=torch.float32).view(-1, 1).to(self.device)
         next_states = torch.tensor(transition_dict['next_states'], dtype=torch.float32).to(self.device)
         dones = torch.tensor(transition_dict['dones'], dtype=torch.float32).view(-1, 1).to(self.device)
+        if self.buffer_type == 'per':
+            #print(f"weights: {transition_dict['weights']}")
+            weights = torch.tensor(transition_dict['weights'], dtype=torch.float32).to(self.device)
 
         q_values = self.q_net(states).gather(1, actions)
         
@@ -89,7 +93,11 @@ class DQN:
             max_next_q_values = self.target_q_net(next_states).max(1)[0].view(-1, 1)
             target_q_values = rewards + self.gamma * max_next_q_values * (1 - dones)
         
-        loss = F.mse_loss(q_values, target_q_values)
+        if self.buffer_type == 'per':
+            loss = (q_values - target_q_values).pow(2) * weights
+            loss = loss.mean()
+        else:
+            loss = F.mse_loss(q_values, target_q_values)
         
         self.optimizer.zero_grad()
         loss.backward()
@@ -100,5 +108,5 @@ class DQN:
             self.target_q_net.load_state_dict(self.q_net.state_dict())
         self.count += 1
         
-        return loss.item()
+        return loss.item(), (target_q_values-q_values).detach().numpy()
     

@@ -182,7 +182,7 @@ def trainNStepSarsa(env, num_eposides=500):
     plt.show()
 
 
-def trainingDQN(env, env_name, num_episodes=500):
+def trainingDQN(env, env_name, num_episodes=500, buffer_type='per'):
     lr = 2e-3
     num_episodes = 500
     hidden_dim = 128
@@ -199,7 +199,11 @@ def trainingDQN(env, env_name, num_episodes=500):
     np.random.seed(0)
     torch.manual_seed(0)
 
-    replay_buffer = rl_utils.ReplayBuffer(buffer_size)
+    if buffer_type == 'per':
+        replay_buffer = rl_utils.PrioritizedReplyBuffer(buffer_size)
+    else:
+        replay_buffer = rl_utils.ReplayBuffer(buffer_size)
+    
     state_dim = env.observation_space.shape[0]
     
     if "Pendulum" in env_name:
@@ -239,15 +243,28 @@ def trainingDQN(env, env_name, num_episodes=500):
                     env_step += 1
                     # 当buffer数据的数量超过一定值后,才进行Q网络训练
                     if replay_buffer.size() > minimal_size:
-                        b_s, b_a, b_r, b_ns, b_d = replay_buffer.sample(batch_size)
-                        transition_dict = {
-                            'states': b_s,
-                            'actions': b_a,
-                            'next_states': b_ns,
-                            'rewards': b_r,
-                            'dones': b_d
-                        }
-                        agent.update(transition_dict)
+                        if buffer_type == 'per':
+                            b_s, b_a, b_r, b_ns, b_d, idxs, weights = replay_buffer.sample(batch_size)
+                            transition_dict = {
+                                'states': b_s,
+                                'actions': b_a,
+                                'next_states': b_ns,
+                                'rewards': b_r,
+                                'dones': b_d,
+                                'weights': weights
+                            }
+                            _, td_error = agent.update(transition_dict)
+                            replay_buffer.update_priorities(idxs, np.abs(td_error))
+                        else:
+                            b_s, b_a, b_r, b_ns, b_d = replay_buffer.sample(batch_size)
+                            transition_dict = {
+                                'states': b_s,
+                                'actions': b_a,
+                                'next_states': b_ns,
+                                'rewards': b_r,
+                                'dones': b_d,
+                            }
+                            agent.update(transition_dict)
                         
                 return_list.append(episode_return)
                 if (i_episode + 1) % 10 == 0:
