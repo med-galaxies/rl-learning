@@ -32,7 +32,7 @@ class VANet(nn.Module):
 class DoubleDQN:
 
     def __init__(self, state_dim, hidden_dim, action_dim, learning_rate, gamma,
-                 epsilon, update_freq, device, type="dueling"):
+                 epsilon, update_freq, device, type="dueling", buffer_type='per'):
         self.action_dim = action_dim
         self.learning_rate = learning_rate
         self.gamma = gamma
@@ -48,6 +48,7 @@ class DoubleDQN:
         self.optimizer = torch.optim.Adam(self.q_net.parameters(), lr=learning_rate)
         self.count = 0
         self.loss_list = []
+        self.buffer_type = buffer_type
 
     def take_action(self, states):
         if np.random.random() < self.epsilon:
@@ -73,6 +74,8 @@ class DoubleDQN:
         rewards = torch.tensor(transition_dict["rewards"], dtype=torch.float32).view(-1, 1).to(self.device)
         next_states = torch.tensor(transition_dict["next_states"], dtype=torch.float32).to(self.device)
         dones = torch.tensor(transition_dict["dones"], dtype=torch.float32).view(-1, 1).to(self.device)
+        if self.buffer_type == 'per':
+            weights = torch.tensor(transition_dict['weights'], dtype=torch.float32).to(self.device)
 
         q_values = self.q_net(states).gather(1, actions)
         max_action_idx = self.q_net(next_states).max(1)[1].view(-1, 1)
@@ -80,7 +83,11 @@ class DoubleDQN:
         td_target = rewards + self.gamma * max_next_q_values * (1-dones)
         
         self.optimizer.zero_grad()
-        loss = F.mse_loss(q_values, td_target)
+        if self.buffer_type == 'per':
+            loss = (q_values - td_target).pow(2) * weights
+            loss = loss.mean()
+        else:
+            loss = F.mse_loss(q_values, td_target)
         loss.backward()
         self.optimizer.step()
         self.loss_list.append(loss.item())
@@ -89,3 +96,4 @@ class DoubleDQN:
             self.q_target_net.load_state_dict(self.q_net.state_dict())
         
         self.count += 1
+        return loss.item(), (td_target-q_values).detach().numpy()

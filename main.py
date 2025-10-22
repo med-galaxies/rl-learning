@@ -2,7 +2,8 @@ from envs.env import CliffWalkingEnv
 from algorithm.policy_iteration import PolicyIteration
 from algorithm.value_iteration import ValueIteration
 from algorithm.sarsa import Sarsa
-from utils.model_train import trainingSarsa, trainingQlearning, trainDynaQ, trainNStepSarsa, trainingDQN, trainingDoubleDQN, trainingReinforce, trainingActorCritic
+from utils.model_train import trainingSarsa, trainingQlearning, trainDynaQ, trainNStepSarsa, trainingDQN, \
+trainingDoubleDQN, trainingReinforce, trainingActorCritic, trainingTRPO
 from algorithm.q_learning import QLearning
 import gymnasium as gym
 import time
@@ -84,7 +85,7 @@ def main():
     #     is_slippery=True,
     #     render_mode="human"
     # )
-    env = gym.make("Pendulum-v1", render_mode="human")
+    env = gym.make("CartPole-v1", render_mode="human")
     env = env.unwrapped  # 解封装才能访问状态转移矩阵P
     env.reset()
     env.render()
@@ -124,11 +125,11 @@ def main():
 
     #trainNStepSarsa(env)
     #trainDynaQ(env)
-    trainingDQN(env, "Pendulum-v1")
+    #trainingDQN(env, "Pendulum-v1")
     #trainingDoubleDQN(env, "Pendulum-v1")
     #trainingReinforce(env, "Pendulum-v1")
     #trainingActorCritic(env, "Pendulum-v1", 1500)
-
+    trainingTRPO(env, "CartPole-v1")
 
     env.close()
 

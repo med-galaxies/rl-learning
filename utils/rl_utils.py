@@ -35,20 +35,32 @@ class PrioritizedReplyBuffer:
     def add(self, state, action, reward, next_state, done, td_error=1):
         if type(state) is tuple:
             state = state[0]
-        self.buffer.append((state, action, reward, next_state, done))
-        self.priorities[self.pos] = td_error
-        self.pos = (self.pos + 1) % self.capacity
+        if len(self.buffer) < self.capacity:
+            self.buffer.append((state, action, reward, next_state, done))
+            self.priorities[self.pos] = td_error
+            self.pos = (self.pos + 1) % self.capacity
+        else:
+            min_priority_idx = self.priorities.argmin()
+            self.buffer[min_priority_idx] = (state, action, reward, next_state, done)
+            self.priorities[min_priority_idx] = td_error
 
-    def sample(self, batch_size, beta=0.4):
-        p_list = self.priorities[:self.pos]
+
+    def sample(self, batch_size, beta=0.4, finish_ratio=0):
+        buffer_size = len(self.buffer)
+        p_list = self.priorities[:buffer_size]
         p_list = p_list ** self.alpha
         p_list /= p_list.sum()
-        # print(f"length p_list: {len(p_list)}, {p_list}")
-        # print(f"length of buffer : {len(self.buffer)}, {self.buffer}")
+
+        if len(p_list) != len(self.buffer):
+
+            print(f"length p_list: {len(p_list)}, {len(self.buffer)}")
+            # print(f"length of buffer : {len(self.buffer)}, {self.buffer}")
 
         idx_list = np.random.choice(len(self.buffer), batch_size, p=p_list)
         samples = [self.buffer[idx] for idx in idx_list]
         state, action, reward, next_state, done = zip(*samples)
+
+        beta = max(0.4, finish_ratio)
 
         weights = (len(self.buffer) * p_list[idx_list]) ** (-beta)
         weights /= weights.max()

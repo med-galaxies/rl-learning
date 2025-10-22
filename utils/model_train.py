@@ -8,7 +8,12 @@ from algorithm.DQN import DQN
 from algorithm.double_DQN import DoubleDQN
 from algorithm.reinforce import Reinforce
 from algorithm.actor_critic import ActorCritic
+
+from algorithm.TRPO_fix import TRPO
 from utils import rl_utils
+from collections import deque
+import gymnasium as gym
+
 def trainingSarsa(env, agent, num_episodes=500):
 
     np.random.seed(0)
@@ -184,7 +189,7 @@ def trainNStepSarsa(env, num_eposides=500):
 
 def trainingDQN(env, env_name, num_episodes=500, buffer_type='per'):
     lr = 2e-3
-    num_episodes = 500
+    num_episodes = 1000
     hidden_dim = 128
     gamma = 0.98
     epsilon = 0.01
@@ -244,7 +249,7 @@ def trainingDQN(env, env_name, num_episodes=500, buffer_type='per'):
                     # 当buffer数据的数量超过一定值后,才进行Q网络训练
                     if replay_buffer.size() > minimal_size:
                         if buffer_type == 'per':
-                            b_s, b_a, b_r, b_ns, b_d, idxs, weights = replay_buffer.sample(batch_size)
+                            b_s, b_a, b_r, b_ns, b_d, idxs, weights = replay_buffer.sample(batch_size, finish_ratio=i/10.0+0.1)
                             transition_dict = {
                                 'states': b_s,
                                 'actions': b_a,
@@ -302,7 +307,7 @@ def trainingDQN(env, env_name, num_episodes=500, buffer_type='per'):
     plt.show()
 
 
-def trainingDoubleDQN(env, env_name, episodes_num=500):
+def trainingDoubleDQN(env, env_name, episodes_num=500, buffer_type='per'):
     lr = 2e-3
     num_episodes = 500
     hidden_dim = 128
@@ -319,7 +324,11 @@ def trainingDoubleDQN(env, env_name, episodes_num=500):
     np.random.seed(0)
     torch.manual_seed(0)
 
-    replay_buffer = rl_utils.ReplayBuffer(buffer_size)
+    if buffer_type == 'per':
+        replay_buffer = rl_utils.PrioritizedReplyBuffer(buffer_size)
+    else:
+        replay_buffer = rl_utils.ReplayBuffer(buffer_size)
+
     state_dim = env.observation_space.shape[0]
     if "Pendulum" in env_name:
         action_dim = 11
@@ -356,15 +365,28 @@ def trainingDoubleDQN(env, env_name, episodes_num=500):
                     env_step += 1
 
                     if replay_buffer.size() > minimal_size:
-                        b_s, b_a, b_r, b_ns, b_d = replay_buffer.sample(batch_size)
-                        transition_dict = {
-                            'states': b_s,
-                            'actions': b_a,
-                            'next_states': b_ns,
-                            'rewards': b_r,
-                            'dones': b_d
-                        }
-                        agent.update(transition_dict)
+                        if buffer_type == 'per':
+                            b_s, b_a, b_r, b_ns, b_d, idxs, weights = replay_buffer.sample(batch_size, finish_ratio=iteration/10.0+0.1)
+                            transition_dict = {
+                                'states': b_s,
+                                'actions': b_a,
+                                'next_states': b_ns,
+                                'rewards': b_r,
+                                'dones': b_d,
+                                'weights': weights
+                            }
+                            _, td_error = agent.update(transition_dict)
+                            replay_buffer.update_priorities(idxs, np.abs(td_error))
+                        else:
+                            b_s, b_a, b_r, b_ns, b_d = replay_buffer.sample(batch_size)
+                            transition_dict = {
+                                'states': b_s,
+                                'actions': b_a,
+                                'next_states': b_ns,
+                                'rewards': b_r,
+                                'dones': b_d,
+                            }
+                            agent.update(transition_dict)
                 return_list.append(episode_return)
                 if (episode+1) % 10 == 0:
                     pbar.set_postfix({
@@ -571,4 +593,104 @@ def trainingActorCritic(env, env_name, num_episodes=1000):
     plt.xlabel('Frames')
     plt.ylabel('Q value')
     plt.title('Actor-Critic on {}'.format(env_name))
+    plt.show()
+
+
+
+# ============= 8. 完整训练流程 =============
+def trainingTRPO(env, env_name='CartPole-v1', num_episodes=500):
+    """
+    TRPO训练主循环
+    
+    Args:
+        env_name: 环境名称
+        max_episodes: 最大训练轮数
+        max_steps: 每轮最大步数
+        batch_size: 批量大小（轨迹长度）
+    """
+    hidden_dim = 128
+    gamma = 0.98
+    lmbda = 0.95
+    critic_lr = 1e-2
+    kl_constraint = 0.0005
+    alpha = 0.5
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device(
+        "cpu")
+
+    torch.manual_seed(0)
+    state_dim = env.observation_space.shape[0]
+    if "Pendulum" in env_name:
+        action_dim = 11
+    else:
+        action_dim = env.action_space.n
+
+    agent = TRPO(state_dim, hidden_dim, action_dim, lmbda,
+                kl_constraint, alpha, critic_lr, gamma, device)
+    return_list = []
+    q_value_list = []
+    max_q_value = 0
+    for i in range(10):
+        with tqdm(total=int(num_episodes/10), desc='Iteration %d' % i) as pbar:
+            for i_episode in range(int(num_episodes/10)):
+                episode_return = 0
+                transition_dict = {'states': [], 'actions': [], 'next_states': [], 'rewards': [], 'dones': []}
+                state = env.reset()
+                done = False
+                env_step = 0
+                while not done:
+                    action = agent.take_action(state)
+                    max_q_value = agent.max_q_value(
+                        state) * 0.005 + max_q_value * 0.995  # 平滑处理
+                    q_value_list.append(max_q_value)
+                    if "Pendulum" in env_name:
+                        action_continuous = rl_utils.dis_to_con(action, env, action_dim)
+                        next_state, reward, terminated, truncated, _ = env.step([action_continuous])
+                        done = terminated or truncated or (env_step >= 200)
+                    else:
+                        next_state, reward, terminated, truncated, _ = env.step(action)
+                        done = terminated or truncated or (env_step >= 500)
+                    if type(state) is tuple: 
+                        transition_dict['states'].append(state[0])
+                    else:
+                        transition_dict['states'].append(state)
+                    transition_dict['actions'].append(action)
+                    transition_dict['next_states'].append(next_state)
+                    transition_dict['rewards'].append(reward)
+                    transition_dict['dones'].append(done)
+                    state = next_state
+                    episode_return += reward
+                    env_step += 1
+                return_list.append(episode_return)
+                agent.update(transition_dict)
+                if (i_episode+1) % 10 == 0:
+                    pbar.set_postfix({'episode': '%d' % (num_episodes/10 * i + i_episode+1), 'return': '%.3f' % np.mean(return_list[-10:])})
+                pbar.update(1)
+
+    
+
+
+    rl_utils.show_loss(agent.critic_loss_list)
+
+    episodes_list = list(range(len(return_list)))
+    plt.plot(episodes_list, return_list)
+    plt.xlabel('Episodes')
+    plt.ylabel('Returns')
+    plt.title('TRPO')
+    plt.show()
+
+    mv_return = rl_utils.moving_average(return_list, 9)
+    plt.plot(episodes_list, mv_return)
+    plt.xlabel('Episodes')
+    plt.ylabel('Returns')
+    plt.title('TRPO')
+    plt.show()
+
+
+    frames_list = list(range(len(q_value_list)))
+    plt.plot(frames_list, q_value_list)
+    plt.axhline(0, c='orange', ls='--')
+    plt.axhline(10, c='red', ls='--')
+    plt.xlabel('Frames')
+    plt.ylabel('Q value')
+    plt.title('TRPO on {}'.format(env_name))
     plt.show()
