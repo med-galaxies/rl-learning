@@ -8,8 +8,9 @@ from algorithm.DQN import DQN
 from algorithm.double_DQN import DoubleDQN
 from algorithm.reinforce import Reinforce
 from algorithm.actor_critic import ActorCritic
-
+from algorithm.TRPO import TRPOContinuous as cTRPO
 from algorithm.TRPO_fix import TRPO
+from algorithm.PPO import PPO
 from utils import rl_utils
 from collections import deque
 import gymnasium as gym
@@ -598,7 +599,7 @@ def trainingActorCritic(env, env_name, num_episodes=1000):
 
 
 # ============= 8. 完整训练流程 =============
-def trainingTRPO(env, env_name='CartPole-v1', num_episodes=500):
+def trainingTRPO(env, action_type, env_name='CartPole-v1', num_episodes=500):
     """
     TRPO训练主循环
     
@@ -608,24 +609,41 @@ def trainingTRPO(env, env_name='CartPole-v1', num_episodes=500):
         max_steps: 每轮最大步数
         batch_size: 批量大小（轨迹长度）
     """
+    # hidden_dim = 128
+    # gamma = 0.9
+    # lmbda = 0.9
+    # critic_lr = 1e-2
+    # kl_constraint = 0.00005
+    # alpha = 0.5
+    # device = torch.device("cuda") if torch.cuda.is_available() else torch.device(
+    #     "cpu")
+
+    num_episodes = 2000
     hidden_dim = 128
-    gamma = 0.98
-    lmbda = 0.95
+    gamma = 0.9
+    lmbda = 0.9
     critic_lr = 1e-2
-    kl_constraint = 0.0005
+    kl_constraint = 0.00005
     alpha = 0.5
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device(
         "cpu")
 
     torch.manual_seed(0)
-    state_dim = env.observation_space.shape[0]
-    if "Pendulum" in env_name:
-        action_dim = 11
-    else:
-        action_dim = env.action_space.n
+    agent = TRPO(hidden_dim, env.observation_space, env.action_space,
+                        lmbda, kl_constraint, alpha, critic_lr, gamma, device)
 
-    agent = TRPO(state_dim, hidden_dim, action_dim, lmbda,
-                kl_constraint, alpha, critic_lr, gamma, device)
+
+    torch.manual_seed(0)
+    # state_dim = env.observation_space.shape[0]
+    # if "Pendulum" in env_name:
+    #     action_type = 'Continuous'
+    #     action_dim = env.action_space.shape[0]
+    # else:
+    #     action_type = 'Discrete'
+    #     action_dim = env.action_space.n
+
+    # agent = TRPO(state_dim, hidden_dim, action_dim, lmbda,
+    #             kl_constraint, alpha, critic_lr, gamma, device, action_type)
     return_list = []
     q_value_list = []
     max_q_value = 0
@@ -642,13 +660,15 @@ def trainingTRPO(env, env_name='CartPole-v1', num_episodes=500):
                     max_q_value = agent.max_q_value(
                         state) * 0.005 + max_q_value * 0.995  # 平滑处理
                     q_value_list.append(max_q_value)
-                    if "Pendulum" in env_name:
-                        action_continuous = rl_utils.dis_to_con(action, env, action_dim)
-                        next_state, reward, terminated, truncated, _ = env.step([action_continuous])
-                        done = terminated or truncated or (env_step >= 200)
-                    else:
-                        next_state, reward, terminated, truncated, _ = env.step(action)
-                        done = terminated or truncated or (env_step >= 500)
+
+                        # action_continuous = rl_utils.dis_to_con(action, env, action_dim)
+                        # next_state, reward, terminated, truncated, _ = env.step([action_continuous])
+                        
+
+                    next_state, reward, terminated, truncated, _ = env.step(action)
+                    done = terminated or truncated or (env_step >= 500) if "Pendulum" in env_name \
+                    else terminated or truncated or (env_step >= 400)
+
                     if type(state) is tuple: 
                         transition_dict['states'].append(state[0])
                     else:
@@ -692,5 +712,125 @@ def trainingTRPO(env, env_name='CartPole-v1', num_episodes=500):
     plt.axhline(10, c='red', ls='--')
     plt.xlabel('Frames')
     plt.ylabel('Q value')
+    plt.title('TRPO on {}'.format(env_name))
+    plt.show()
+
+
+def trainingPPO(env, action_type, env_name='CartPole-v1', num_episodes=500):
+    actor_lr = 3e-4
+    critic_lr = 1e-3
+    num_episodes = 900
+    hidden_dim = 128
+    gamma = 0.98
+    lmbda = 0.95
+    epochs = 20
+    eps = 0.2
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device(
+        "cpu")
+    
+    torch.manual_seed(0)
+    state_dim = env.observation_space.shape[0]
+    if "Pendulum" in env_name:
+        action_type = 'Continuous'
+        action_dim = env.action_space.shape[0]
+    else:
+        action_type = 'Discrete'
+        action_dim = env.action_space.n
+
+    agent = PPO(state_dim, hidden_dim, action_dim, actor_lr, critic_lr, device, \
+                action_type, gamma, lmbda, epochs, eps)
+    return_list = []
+    q_value_list = []
+    max_q_value = 0
+    for i in range(10):
+        with tqdm(total=int(num_episodes/10), desc='Iteration %d' % i) as pbar:
+            for i_episode in range(int(num_episodes/10)):
+                episode_return = 0
+                transition_dict = {'states': [], 'actions': [], 'next_states': [], 'rewards': [], 'dones': []}
+                state = env.reset()
+                done = False
+                env_step = 0
+                while not done:
+                    action = agent.take_action(state)
+                    max_q_value = agent.max_q_value(
+                        state) * 0.005 + max_q_value * 0.995  # 平滑处理
+                    q_value_list.append(max_q_value)
+
+                    next_state, reward, terminated, truncated, _ = env.step(action)
+                    done = terminated or truncated or (env_step >= 500) if "Pendulum" in env_name \
+                    else terminated or truncated or (env_step >= 400)
+
+                    if type(state) is tuple: 
+                        transition_dict['states'].append(state[0])
+                    else:
+                        transition_dict['states'].append(state)
+                    transition_dict['actions'].append(action)
+                    transition_dict['next_states'].append(next_state)
+                    transition_dict['rewards'].append(reward)
+                    transition_dict['dones'].append(done)
+                    state = next_state
+                    episode_return += reward
+                    env_step += 1
+                return_list.append(episode_return)
+                agent.update(transition_dict)
+                if (i_episode+1) % 10 == 0:
+                    pbar.set_postfix({'episode': '%d' % (num_episodes/10 * i + i_episode+1), 'return': '%.3f' % np.mean(return_list[-10:])})
+                pbar.update(1)
+
+
+    rl_utils.show_loss(agent.critic_loss_list)
+    rl_utils.show_loss(agent.actor_loss_list)
+
+    episodes_list = list(range(len(return_list)))
+    plt.plot(episodes_list, return_list)
+    plt.xlabel('Episodes')
+    plt.ylabel('Returns')
+    plt.title('PPO')
+    plt.show()
+
+    mv_return = rl_utils.moving_average(return_list, 9)
+    plt.plot(episodes_list, mv_return)
+    plt.xlabel('Episodes')
+    plt.ylabel('Returns')
+    plt.title('PPO')
+    plt.show()
+
+
+    frames_list = list(range(len(q_value_list)))
+    plt.plot(frames_list, q_value_list)
+    plt.axhline(0, c='orange', ls='--')
+    plt.axhline(10, c='red', ls='--')
+    plt.xlabel('Frames')
+    plt.ylabel('Q value')
+    plt.title('PPO on {}'.format(env_name))
+    plt.show()
+
+def trainTRPO(env, env_name):
+    num_episodes = 2000
+    hidden_dim = 128
+    gamma = 0.9
+    lmbda = 0.9
+    critic_lr = 1e-2
+    kl_constraint = 0.00005
+    alpha = 0.5
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device(
+        "cpu")
+
+    torch.manual_seed(0)
+    agent = cTRPO(hidden_dim, env.observation_space, env.action_space,
+                        lmbda, kl_constraint, alpha, critic_lr, gamma, device)
+    return_list = rl_utils.train_on_policy_agent(env, agent, num_episodes)
+
+    episodes_list = list(range(len(return_list)))
+    plt.plot(episodes_list, return_list)
+    plt.xlabel('Episodes')
+    plt.ylabel('Returns')
+    plt.title('TRPO on {}'.format(env_name))
+    plt.show()
+
+    mv_return = rl_utils.moving_average(return_list, 9)
+    plt.plot(episodes_list, mv_return)
+    plt.xlabel('Episodes')
+    plt.ylabel('Returns')
     plt.title('TRPO on {}'.format(env_name))
     plt.show()

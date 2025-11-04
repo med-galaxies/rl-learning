@@ -28,10 +28,23 @@ class PolicyNet(nn.Module):
 
     def forward(self, x):
         return self.model(x)
+    
+class PolicyNetContinuous(nn.Module):
+    def __init__(self, state_dim, hidden_dim, action_dim):
+        super(PolicyNetContinuous, self).__init__()
+        self.fc1 = nn.Linear(state_dim, hidden_dim)
+        self.fc_mean = nn.Linear(hidden_dim, action_dim)
+        self.fc_std = nn.Linear(hidden_dim, action_dim)
+
+    def forward(self, x):
+        x = F.relu(self.fc1(x))
+        mean = F.tanh(self.fc_mean(x)) * 2.0
+        std = F.softplus(self.fc_std(x))
+        return mean, std
 
 class TRPO:
     def __init__(self, state_dim, hidden_dim, action_dim, lmbda, kl_constriant, alpha,
-                 critic_lr, gamma, device):
+                 critic_lr, gamma, device, action_type='Discrete'):
         self.state_dim = state_dim
         self.hidden_dim = hidden_dim
         self.action_dim = action_dim
@@ -43,25 +56,39 @@ class TRPO:
         self.device = device
         self.critic_loss_list = []
         self.critic = ValueNet(state_dim, hidden_dim).to(device)
-        self.actor = PolicyNet(state_dim, hidden_dim, action_dim).to(device)
+        if action_type == 'Discrete':
+            self.actor = PolicyNet(state_dim, hidden_dim, action_dim).to(device)
+        else:
+            self.actor = PolicyNetContinuous(state_dim, hidden_dim, action_dim).to(device)
+        self.action_type = action_type
         self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=critic_lr)
+
+    def is_continuous(self):
+        return self.action_type == 'Continuous'
 
     def take_action(self, state):
         if isinstance(state, tuple):
             state = state[0]
         state = torch.tensor([state], dtype=torch.float32).to(self.device)
-        probs = self.actor(state)
-        # print("state.shape:", state.shape)
-        # print("probs.shape:", probs.shape)
-        # print("probs.sum(dim=1):", probs.sum(dim=1))
-        action_dist = torch.distributions.Categorical(probs)
-        action = action_dist.sample()
-        return action.item()
+        if not self.is_continuous():
+            probs = self.actor(state)
+            action_dist = torch.distributions.Categorical(probs)
+            action = action_dist.sample()
+            return action.item()
+        else:
+            mean, std = self.actor(state)
+            action_dist = torch.distributions.Normal(mean, std)
+            action = action_dist.sample()
+            return action.cpu().numpy().flatten() 
     
     def hessian_matrix_vector_product(self, states, old_action_dists, vector):
         if isinstance(states, tuple):
             states = states[0]
-        new_action_dist = torch.distributions.Categorical(self.actor(states))
+        if not self.is_continuous():
+            new_action_dist = torch.distributions.Categorical(self.actor(states))
+        else:
+            mean, std = self.actor(states)
+            new_action_dist = torch.distributions.Normal(mean, std)
         kl = torch.mean(
             torch.distributions.kl.kl_divergence(old_action_dists, new_action_dist)
         )
@@ -96,7 +123,13 @@ class TRPO:
     def compute_surrogate_obj(self, states, actions, advantage, old_log_probs, actor):  # 计算策略目标
         if isinstance(states, tuple):
             states = states[0]
-        log_probs = torch.log(actor(states).gather(1, actions))
+        if not self.is_continuous():
+            log_probs = torch.log(actor(states).gather(1, actions))
+        else:
+            mean, std = actor(states)
+            old_action_dists = torch.distributions.Normal(mean, std)
+            log_probs = old_action_dists.log_prob(actions)
+
         ratio = torch.exp(log_probs - old_log_probs)
         return torch.mean(ratio*advantage)
     
@@ -109,7 +142,11 @@ class TRPO:
             new_para = old_para + coef * max_vec
             new_actor = copy.deepcopy(self.actor)
             torch.nn.utils.convert_parameters.vector_to_parameters(new_para, new_actor.parameters())
-            new_action_dists = torch.distributions.Categorical(new_actor(states))
+            if not self.is_continuous():
+                new_action_dists = torch.distributions.Categorical(new_actor(states))
+            else:
+                mean, std = new_actor(states)
+                new_action_dists = torch.distributions.Normal(mean, std)
             kl_div = torch.mean(
                 torch.distributions.kl.kl_divergence(old_action_dists,new_action_dists)
             )
@@ -125,7 +162,7 @@ class TRPO:
         obj_grad = torch.cat([grad.view(-1) for grad in grads]).detach() #计算梯度g
         descent_direction = self.conjugate_gradient(obj_grad, states, old_action_dists) #计算H^-1 * g
         Hd = self.hessian_matrix_vector_product(states, old_action_dists, descent_direction) #计算g^T * H^-1 * g
-        max_coef = torch.sqrt(self.kl_constriant / (torch.dot(descent_direction, Hd)) + 1e-8)
+        max_coef = torch.sqrt(self.kl_constriant / (torch.dot(descent_direction, Hd)+ 1e-8))
         new_para = self.line_search(states, actions, advantage, old_log_probs, old_action_dists, descent_direction*max_coef)
         torch.nn.utils.convert_parameters.vector_to_parameters(new_para, self.actor.parameters()) 
 
@@ -142,21 +179,28 @@ class TRPO:
                                    dtype=torch.float).to(self.device)
         dones = torch.tensor(transition_dict['dones'],
                              dtype=torch.float).view(-1, 1).to(self.device)
-        td_target = rewards + self.gamma * self.critic(next_states) * (1 -
-                                                                       dones)
+        
+        # rewards = (rewards + 8.0) / 8.0
+        td_target = rewards + self.gamma * self.critic(next_states) * (1 - dones)
         td_delta = td_target - self.critic(states)
         advantage = rl_utils.compute_advantage(self.gamma, self.lmbda,
                                       td_delta.cpu()).to(self.device)
-        old_log_probs = torch.log(self.actor(states).gather(1,
-                                                            actions)).detach()
-        old_action_dists = torch.distributions.Categorical(
-            self.actor(states).detach())
+        
+        if not self.is_continuous():
+            old_action_dists = torch.distributions.Categorical(self.actor(states).detach())
+            old_log_probs = torch.log(self.actor(states).gather(1, actions)).detach()
+        else:
+            mean, std = self.actor(states)
+            old_action_dists = torch.distributions.Normal(mean.detach(), std.detach())
+            old_log_probs = old_action_dists.log_prob(actions)
         critic_loss = torch.mean(
-            F.mse_loss(self.critic(states), td_target.detach()))
+            F.mse_loss(self.critic(states), td_target.detach())
+        )
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
         self.critic_optimizer.step()  # 更新价值函数
         self.critic_loss_list.append(critic_loss.item())
+
         # 更新策略函数
         self.policy_learn(states, actions, old_action_dists, old_log_probs,
                           advantage)
