@@ -36,9 +36,9 @@ class PolicyNetContinuous(torch.nn.Module):
         self.fc_log_std = nn.Linear(hidden_dim, action_dim)
 
     def forward(self, x):
-        x = self.fc1(x)
+        x = F.relu(self.fc1(x))
         mean = F.tanh(self.fc_mean(x)) * 2.0
-        log_std = F.softplus(self.fc_log_std(x))
+        log_std = F.softplus(self.fc_log_std(x)) + 1e-5
         std = torch.exp(torch.clamp(log_std, -5, 2))
         return mean, std
     
@@ -95,9 +95,10 @@ class PPO:
         actions = torch.tensor(transition_dict['actions'], dtype=torch.long).view(-1, 1).to(self.device)
         dones = torch.FloatTensor(transition_dict['dones']).view(-1, 1).to(self.device)
 
-        td_target = rewards + self.gamma * self.critic(next_states) * (1-dones)
+        td_target = rewards + self.gamma * self.critic(next_states).detach() * (1 - dones)
         td_delta = td_target - self.critic(states)
         advantage = rl_utils.compute_advantage(self.gamma, self.lmbda, td_delta)
+        advantage = (advantage - advantage.mean()) / (advantage.std() + 1e-8)
 
         if not self.is_continuous():
             dist = torch.distributions.Categorical(self.actor(states))
@@ -132,6 +133,9 @@ class PPO:
             self.critic_loss_list.append(critic_loss.item())
             self.critic_optimizer.step()
             # print(f"critic loss: {critic_loss.item()}")
+
+            torch.nn.utils.clip_grad_norm_(self.actor.parameters(), 0.5)
+            torch.nn.utils.clip_grad_norm_(self.critic.parameters(), 0.5)
 
 
 

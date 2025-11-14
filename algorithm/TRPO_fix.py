@@ -29,17 +29,18 @@ class PolicyNet(nn.Module):
     def forward(self, x):
         return self.model(x)
     
-class PolicyNetContinuous(nn.Module):
+class PolicyNetContinuous(torch.nn.Module):
     def __init__(self, state_dim, hidden_dim, action_dim):
         super(PolicyNetContinuous, self).__init__()
         self.fc1 = nn.Linear(state_dim, hidden_dim)
         self.fc_mean = nn.Linear(hidden_dim, action_dim)
-        self.fc_std = nn.Linear(hidden_dim, action_dim)
+        self.fc_log_std = nn.Linear(hidden_dim, action_dim)
 
     def forward(self, x):
-        x = F.relu(self.fc1(x))
+        x = self.fc1(x)
         mean = F.tanh(self.fc_mean(x)) * 2.0
-        std = F.softplus(self.fc_std(x))
+        log_std = F.softplus(self.fc_log_std(x))
+        std = torch.exp(torch.clamp(log_std, -5, 2))
         return mean, std
 
 class TRPO:

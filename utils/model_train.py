@@ -618,7 +618,7 @@ def trainingTRPO(env, action_type, env_name='CartPole-v1', num_episodes=500):
     # device = torch.device("cuda") if torch.cuda.is_available() else torch.device(
     #     "cpu")
 
-    num_episodes = 2000
+    num_episodes = 900
     hidden_dim = 128
     gamma = 0.9
     lmbda = 0.9
@@ -629,21 +629,21 @@ def trainingTRPO(env, action_type, env_name='CartPole-v1', num_episodes=500):
         "cpu")
 
     torch.manual_seed(0)
-    agent = TRPO(hidden_dim, env.observation_space, env.action_space,
-                        lmbda, kl_constraint, alpha, critic_lr, gamma, device)
+    # agent = TRPO(hidden_dim, env.observation_space, env.action_space,
+    #                     lmbda, kl_constraint, alpha, critic_lr, gamma, device)
 
 
     torch.manual_seed(0)
-    # state_dim = env.observation_space.shape[0]
-    # if "Pendulum" in env_name:
-    #     action_type = 'Continuous'
-    #     action_dim = env.action_space.shape[0]
-    # else:
-    #     action_type = 'Discrete'
-    #     action_dim = env.action_space.n
+    state_dim = env.observation_space.shape[0]
+    if "Pendulum" in env_name:
+        action_type = 'Continuous'
+        action_dim = env.action_space.shape[0]
+    else:
+        action_type = 'Discrete'
+        action_dim = env.action_space.n
 
-    # agent = TRPO(state_dim, hidden_dim, action_dim, lmbda,
-    #             kl_constraint, alpha, critic_lr, gamma, device, action_type)
+    agent = TRPO(state_dim, hidden_dim, action_dim, lmbda,
+                kl_constraint, alpha, critic_lr, gamma, device, action_type)
     return_list = []
     q_value_list = []
     max_q_value = 0
@@ -718,13 +718,13 @@ def trainingTRPO(env, action_type, env_name='CartPole-v1', num_episodes=500):
 
 def trainingPPO(env, action_type, env_name='CartPole-v1', num_episodes=500):
     actor_lr = 3e-4
-    critic_lr = 1e-3
-    num_episodes = 900
+    critic_lr = 5e-4
+    num_episodes = 500
     hidden_dim = 128
     gamma = 0.98
     lmbda = 0.95
-    epochs = 20
-    eps = 0.2
+    epochs = 10
+    eps = 0.3
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device(
         "cpu")
     
@@ -742,7 +742,7 @@ def trainingPPO(env, action_type, env_name='CartPole-v1', num_episodes=500):
     return_list = []
     q_value_list = []
     max_q_value = 0
-    for i in range(10):
+    for i in range(12):
         with tqdm(total=int(num_episodes/10), desc='Iteration %d' % i) as pbar:
             for i_episode in range(int(num_episodes/10)):
                 episode_return = 0
