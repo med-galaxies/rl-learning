@@ -6,11 +6,13 @@ from algorithm.n_step_sarsa import NStepSarsa
 from algorithm.dyna_Q import DynaQ
 from algorithm.DQN import DQN
 from algorithm.double_DQN import DoubleDQN
+from algorithm.double_DQN_noise import DoubleNoiseDQN
 from algorithm.reinforce import Reinforce
 from algorithm.actor_critic import ActorCritic
 from algorithm.TRPO import TRPOContinuous as cTRPO
 from algorithm.TRPO_fix import TRPO
 from algorithm.PPO import PPO
+from algorithm.ddpg import DDPG
 from utils import rl_utils
 from collections import deque
 import gymnasium as gym
@@ -308,7 +310,7 @@ def trainingDQN(env, env_name, num_episodes=500, buffer_type='per'):
     plt.show()
 
 
-def trainingDoubleDQN(env, env_name, episodes_num=500, buffer_type='per'):
+def trainingDoubleDQN(env, env_name, episodes_num=500, buffer_type='per', isNoise=False):
     lr = 2e-3
     num_episodes = 500
     hidden_dim = 128
@@ -336,8 +338,10 @@ def trainingDoubleDQN(env, env_name, episodes_num=500, buffer_type='per'):
     else:
         action_dim = env.action_space.n
 
-    agent = DoubleDQN(state_dim, hidden_dim, action_dim, lr, gamma, epsilon,
-                      update_freq, device)
+    # agent = DoubleDQN(state_dim, hidden_dim, action_dim, lr, gamma, epsilon,
+    #                   update_freq, device)
+    agent = DoubleNoiseDQN(state_dim, hidden_dim, action_dim, lr, gamma, epsilon,
+                        update_freq, device, isNoise=isNoise)
     return_list = []
     q_value_list = []
     max_q_value = 0
@@ -833,4 +837,119 @@ def trainTRPO(env, env_name):
     plt.xlabel('Episodes')
     plt.ylabel('Returns')
     plt.title('TRPO on {}'.format(env_name))
+    plt.show()
+
+
+
+
+
+def trainingDDPG(env, env_name, episodes_num=500, buffer_type='per', isNoise=False):
+    actor_lr = 3e-4
+    critic_lr = 3e-3
+    num_episodes = 200
+    hidden_dim = 64
+    gamma = 0.98
+    tau = 0.005  # 软更新参数
+    buffer_size = 10000
+    minimal_size = 1000
+    batch_size = 64
+    sigma = 0.01  # 高斯噪声标准差
+    device = torch.device("xpu") if torch.xpu.is_available() else torch.device(
+        "cpu")
+
+    random.seed(0)
+    np.random.seed(0)
+    torch.manual_seed(0)
+
+    if buffer_type == 'per':
+        replay_buffer = rl_utils.PrioritizedReplyBuffer(buffer_size)
+    else:
+        replay_buffer = rl_utils.ReplayBuffer(buffer_size)
+
+    state_dim = env.observation_space.shape[0]
+
+    action_dim = env.action_space.shape[0]
+    action_bound = env.action_space.high[0] 
+
+    agent = DDPG(state_dim, hidden_dim, action_dim, action_bound, actor_lr, critic_lr, gamma, sigma, tau, device)
+
+    return_list = []
+    q_value_list = []
+    max_q_value = 0
+    for iteration in range(10):
+        with tqdm(total=int(episodes_num / 10), desc='Iteration %d' % iteration) as pbar:
+            for episode in range(int(episodes_num / 10)):
+                episode_return = 0
+                state = env.reset()
+                done = False
+                env_step = 0
+                while not done:
+                    action = agent.take_action(state)
+                    # max_q_value = agent.max_q_value(
+                    #     state, action) * 0.005 + max_q_value * 0.995  # 平滑处理
+                    # q_value_list.append(max_q_value) 
+            
+                    next_state, reward, terminated, truncated, _ = env.step(action)
+                    done = terminated or truncated or (env_step >= 500)
+                    replay_buffer.add(state, action, reward, next_state, done)
+                    state = next_state
+                    episode_return += reward
+                    env_step += 1
+
+                    if replay_buffer.size() > minimal_size:
+                        if buffer_type == 'per':
+                            b_s, b_a, b_r, b_ns, b_d, idxs, weights = replay_buffer.sample(batch_size, finish_ratio=iteration/10.0+0.1)
+                            transition_dict = {
+                                'states': b_s,
+                                'actions': b_a,
+                                'next_states': b_ns,
+                                'rewards': b_r,
+                                'dones': b_d,
+                                'weights': weights
+                            }
+                            _, td_error = agent.update(transition_dict)
+                            replay_buffer.update_priorities(idxs, np.abs(td_error))
+                        else:
+                            b_s, b_a, b_r, b_ns, b_d = replay_buffer.sample(batch_size)
+                            transition_dict = {
+                                'states': b_s,
+                                'actions': b_a,
+                                'next_states': b_ns,
+                                'rewards': b_r,
+                                'dones': b_d,
+                            }
+                            agent.update(transition_dict)
+                return_list.append(episode_return)
+                if (episode+1) % 10 == 0:
+                    pbar.set_postfix({
+                        'episode':
+                        '%d' % (num_episodes / 10 * iteration + episode + 1),
+                        'return':
+                        '%.3f' % np.mean(return_list[-10:])
+                    })
+                pbar.update(1)
+    rl_utils.show_loss(agent.actor_loss_list)
+    rl_utils.show_loss(agent.critic_loss_list)
+    episodes_list = list(range(len(return_list)))
+    plt.plot(episodes_list, return_list)
+    plt.xlabel('Episodes')
+    plt.ylabel('Returns')
+    plt.title('DDPG')
+    plt.show()
+
+    mv_return = rl_utils.moving_average(return_list, 9)
+    plt.plot(episodes_list, mv_return)
+    plt.xlabel('Episodes')
+    plt.ylabel('Returns')
+    plt.title('DDPG')
+    plt.show()
+
+
+    frames_list = list(range(len(q_value_list)))
+    plt.plot(frames_list, q_value_list)
+    plt.axhline(0, c='orange', ls='--')
+    plt.axhline(10, c='red', ls='--')
+    plt.xlabel('Frames')
+    plt.ylabel('Q value')
+    plt.title('DDPG on {}'.format(env_name))
     plt.show()

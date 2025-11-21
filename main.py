@@ -3,7 +3,7 @@ from algorithm.policy_iteration import PolicyIteration
 from algorithm.value_iteration import ValueIteration
 from algorithm.sarsa import Sarsa
 from utils.model_train import trainingSarsa, trainingQlearning, trainDynaQ, trainNStepSarsa, trainingDQN, \
-trainingDoubleDQN, trainingReinforce, trainingActorCritic, trainingTRPO, trainingPPO
+trainingDoubleDQN, trainingReinforce, trainingActorCritic, trainingTRPO, trainingPPO, trainingDDPG
 from algorithm.q_learning import QLearning
 import gymnasium as gym
 import time
@@ -126,11 +126,12 @@ def main():
     #trainNStepSarsa(env)
     #trainDynaQ(env)
     #trainingDQN(env, "Pendulum-v1")
-    #trainingDoubleDQN(env, "Pendulum-v1")
+    # trainingDoubleDQN(env, "Pendulum-v1")
     #trainingReinforce(env, "Pendulum-v1")
     #trainingActorCritic(env, "Pendulum-v1", 1500)
     # trainingTRPO(env, 'Continuous', "Pendulum-v1")
-    trainingPPO(env, 'Continuous', 'Pendulum-v1')
+    # trainingPPO(env, 'Continuous', 'Pendulum-v1')
+    trainingDDPG(env, "Pendulum-v1")
 
     env.close()
 
