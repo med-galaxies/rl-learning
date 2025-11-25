@@ -861,10 +861,8 @@ def trainingDDPG(env, env_name, episodes_num=500, buffer_type='per', isNoise=Fal
     np.random.seed(0)
     torch.manual_seed(0)
 
-    if buffer_type == 'per':
-        replay_buffer = rl_utils.PrioritizedReplyBuffer(buffer_size)
-    else:
-        replay_buffer = rl_utils.ReplayBuffer(buffer_size)
+ 
+    replay_buffer = rl_utils.ReplayBuffer(buffer_size)
 
     state_dim = env.observation_space.shape[0]
 
@@ -897,28 +895,15 @@ def trainingDDPG(env, env_name, episodes_num=500, buffer_type='per', isNoise=Fal
                     env_step += 1
 
                     if replay_buffer.size() > minimal_size:
-                        if buffer_type == 'per':
-                            b_s, b_a, b_r, b_ns, b_d, idxs, weights = replay_buffer.sample(batch_size, finish_ratio=iteration/10.0+0.1)
-                            transition_dict = {
-                                'states': b_s,
-                                'actions': b_a,
-                                'next_states': b_ns,
-                                'rewards': b_r,
-                                'dones': b_d,
-                                'weights': weights
-                            }
-                            _, td_error = agent.update(transition_dict)
-                            replay_buffer.update_priorities(idxs, np.abs(td_error))
-                        else:
-                            b_s, b_a, b_r, b_ns, b_d = replay_buffer.sample(batch_size)
-                            transition_dict = {
-                                'states': b_s,
-                                'actions': b_a,
-                                'next_states': b_ns,
-                                'rewards': b_r,
-                                'dones': b_d,
-                            }
-                            agent.update(transition_dict)
+                        b_s, b_a, b_r, b_ns, b_d = replay_buffer.sample(batch_size)
+                        transition_dict = {
+                            'states': b_s,
+                            'actions': b_a,
+                            'next_states': b_ns,
+                            'rewards': b_r,
+                            'dones': b_d,
+                        }
+                        agent.update(transition_dict)
                 return_list.append(episode_return)
                 if (episode+1) % 10 == 0:
                     pbar.set_postfix({

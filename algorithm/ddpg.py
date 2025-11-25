@@ -40,6 +40,7 @@ class DDPG:
         self.sigma = sigma
         self.tau = tau
         self.action_dim = action_dim
+        self.action_bound = action_bound
         self.device = device
         self.critic_loss_list = []
         self.actor_loss_list = []
@@ -48,9 +49,13 @@ class DDPG:
         if isinstance(state, tuple):
             state = state[0]
         state = torch.tensor([state], dtype=torch.float).to(self.device)
-        action = self.actor(state).item()
+        # action = self.actor(state).item()
+        # action = action + self.sigma * np.random.randn(self.action_dim)
+        # return action
+        action = self.actor(state).detach().cpu().numpy()[0]
         action = action + self.sigma * np.random.randn(self.action_dim)
-        return action
+        return np.clip(action, -self.action_bound, self.action_bound)  # 可选:限制范围
+
     
     def soft_update(self, net, target_net):
         for param_target, param in zip(target_net.parameters(), net.parameters()):
@@ -59,7 +64,7 @@ class DDPG:
     def max_q_value(self, state, action):
         if type(state) is tuple:
             state = state[0]
-        state = torch.tensor([state], dtype=torch.float32)
+        state = torch.tensor([state], dtype=torch.float32).to(self.device)
         return self.critic(state, action).max().item()
 
     def update(self, transition_dict):
@@ -75,11 +80,14 @@ class DDPG:
         next_q_values = self.target_critic(next_states, self.target_actor(next_states))
         q_target = rewards + self.gamma * next_q_values * (1-dones)
         critic_loss = torch.mean(F.mse_loss(self.critic(states, actions), q_target))
+
+        self.critic_optimizer.zero_grad()
         critic_loss.backward()
         self.critic_optimizer.step()
         self.critic_loss_list.append(critic_loss.item())
 
         actor_loss = -torch.mean(self.critic(states, self.actor(states)))
+        self.actor_optimizer.zero_grad()
         actor_loss.backward()
         self.actor_optimizer.step()
         self.actor_loss_list.append(actor_loss.item())
