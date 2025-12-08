@@ -65,6 +65,16 @@ class DDPG:
         if type(state) is tuple:
             state = state[0]
         state = torch.tensor([state], dtype=torch.float32).to(self.device)
+
+        if isinstance(action, np.ndarray):
+            action = torch.tensor(action, dtype=torch.float32).to(self.device)
+        elif not isinstance(action, torch.Tensor):
+            action = torch.tensor([action], dtype=torch.float32).to(self.device)
+    
+        # 确保action的shape正确 (batch_size, action_dim)
+        if action.dim() == 1:
+            action = action.unsqueeze(0)
+
         return self.critic(state, action).max().item()
 
     def update(self, transition_dict):
@@ -72,7 +82,9 @@ class DDPG:
         if isinstance(state, tuple):
             state = state[0]
         states = torch.tensor(state, dtype=torch.float).to(self.device)
-        actions = torch.tensor(transition_dict['actions'], dtype=torch.float).view(-1, 1).to(self.device)
+        actions = torch.tensor(transition_dict['actions'], dtype=torch.float).to(self.device)
+        if actions.dim() == 1:
+            actions = actions.unsqueeze(1)
         rewards = torch.tensor(transition_dict['rewards'], dtype=torch.float).view(-1, 1).to(self.device)
         next_states = torch.tensor(transition_dict['next_states'], dtype=torch.float).to(self.device)
         dones = torch.tensor(transition_dict['dones'], dtype=torch.float).view(-1, 1).to(self.device)

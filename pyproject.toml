@@ -12,6 +12,12 @@ dependencies = [
     "torch>=2.7.0",
     "torchvision>=0.22.0",
     "pytorch-triton-xpu>=3.3.0 ; sys_platform == 'win32' or sys_platform == 'linux'",
+    "optuna>=4.6.0",
+    "pandas>=2.3.3",
+    "plotly>=6.5.0",
+    "scikit-learn>=1.6.1",
+    "swig>=4.4.0",
+    "box2d-py>=2.3.8",
 ]
 
 
