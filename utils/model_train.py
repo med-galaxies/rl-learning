@@ -1115,7 +1115,7 @@ def trainingDDPG(env, env_name, episodes_num=2000, buffer_type='per', isNoise=Fa
                         'episode':
                         '%d' % (num_episodes / num_iterations * iteration + episode + 1),
                         'return':
-                        '%.3f' % np.mean(return_list[-(episodes_num / num_iterations):])
+                        '%.3f' % np.mean(return_list[-int(episodes_num / num_iterations):])
                     })
                 pbar.update(1)
     rl_utils.show_loss(agent.actor_loss_list)
