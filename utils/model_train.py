@@ -13,6 +13,7 @@ from algorithm.TRPO import TRPOContinuous as cTRPO
 from algorithm.TRPO_fix import TRPO
 from algorithm.PPO import PPO
 from algorithm.ddpg import DDPG
+from algorithm.SAC import SACContinuous as SAC
 from utils import rl_utils
 from collections import deque
 import gymnasium as gym
@@ -1248,3 +1249,122 @@ def trainingDDPGOptuna(env, env_name, episodes_num=100, n_trials=50):
     
     print(study.trials_dataframe().sort_values('value', ascending=False).head(10))
     return study, study.best_params
+
+
+def trainingSAC(env, env_name, episodes_num=2000, buffer_type='normal', isNoise=False):
+    actor_lr = 3e-4
+    critic_lr = 3e-3
+    alpha_lr = 3e-4
+    num_episodes = 100
+    hidden_dim = 128
+    gamma = 0.99
+    tau = 0.005  # 软更新参数
+    buffer_size = 100000
+    minimal_size = 1000
+    batch_size = 64
+    target_entropy = -env.action_space.shape[0]
+    max_step = 500
+
+    num_iterations = 20
+    device = torch.device("mps") if torch.mps.is_available() else torch.device(
+        "cpu")
+
+    random.seed(0)
+    np.random.seed(0)
+    torch.manual_seed(0)
+
+ 
+    if buffer_type == "per":
+        replay_buffer = rl_utils.PrioritizedReplyBuffer(buffer_size)
+    else:
+        replay_buffer = rl_utils.ReplayBuffer(buffer_size)
+
+    state_dim = env.observation_space.shape[0]
+
+    action_dim = env.action_space.shape[0]
+    action_bound = env.action_space.high[0] 
+
+    agent = SAC(state_dim, hidden_dim, action_dim, action_bound, actor_lr, critic_lr, alpha_lr, target_entropy, 
+                gamma, tau, device)
+
+    return_list = []
+    q_value_list = []
+    max_q_value = 0
+    for iteration in range(num_iterations):
+        with tqdm(total=int(episodes_num / num_iterations), desc='Iteration %d' % iteration) as pbar:
+            for episode in range(int(episodes_num / num_iterations)):
+                episode_return = 0
+                state = env.reset()
+                done = False
+                env_step = 0
+                while not done:
+                    action = agent.take_action(state)
+                    max_q_value = agent.max_q_value(
+                        state, action) * 0.005 + max_q_value * 0.995  # 平滑处理
+                    q_value_list.append(max_q_value) 
+            
+                    next_state, reward, terminated, truncated, _ = env.step(action)
+                    done = terminated or truncated or (env_step >= max_step)
+                    replay_buffer.add(state, action, reward, next_state, done)
+                    state = next_state
+                    episode_return += reward
+                    env_step += 1
+
+                    if replay_buffer.size() > minimal_size:
+                        if buffer_type == 'per':
+                            b_s, b_a, b_r, b_ns, b_d, idxs, weights = replay_buffer.sample(batch_size, finish_ratio=iteration/10.0+0.1)
+                            transition_dict = {
+                                'states': b_s,
+                                'actions': b_a,
+                                'next_states': b_ns,
+                                'rewards': b_r,
+                                'dones': b_d,
+                                'weights': weights
+                            }
+                            _, td_error = agent.update(transition_dict)
+                            replay_buffer.update_priorities(idxs, np.abs(td_error))
+                        else:
+                            b_s, b_a, b_r, b_ns, b_d = replay_buffer.sample(batch_size)
+                            transition_dict = {
+                                'states': b_s,
+                                'actions': b_a,
+                                'next_states': b_ns,
+                                'rewards': b_r,
+                                'dones': b_d,
+                            }
+                            agent.update(transition_dict)
+                return_list.append(episode_return)
+                if (episode+1) % num_iterations == 0:
+                    pbar.set_postfix({
+                        'episode':
+                        '%d' % (num_episodes / num_iterations * iteration + episode + 1),
+                        'return':
+                        '%.3f' % np.mean(return_list[-int(episodes_num / num_iterations):])
+                    })
+                pbar.update(1)
+    rl_utils.show_loss(agent.loss_list1)
+    rl_utils.show_loss(agent.loss_list2)
+    rl_utils.show_loss(agent.loss_list_alpha)
+    episodes_list = list(range(len(return_list)))
+    plt.plot(episodes_list, return_list)
+    plt.xlabel('Episodes')
+    plt.ylabel('Returns')
+    plt.title('SAC')
+    plt.show()
+
+    mv_return = rl_utils.moving_average(return_list, 9)
+    plt.plot(episodes_list, mv_return)
+    plt.xlabel('Episodes')
+    plt.ylabel('Returns')
+    plt.title('SAC')
+    plt.show()
+
+
+    frames_list = list(range(len(q_value_list)))
+    plt.plot(frames_list, q_value_list)
+    plt.axhline(0, c='orange', ls='--')
+    plt.axhline(10, c='red', ls='--')
+    plt.xlabel('Frames')
+    plt.ylabel('Q value')
+    plt.title('SAC on {}'.format(env_name))
+    plt.show()

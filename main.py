@@ -3,7 +3,8 @@ from algorithm.policy_iteration import PolicyIteration
 from algorithm.value_iteration import ValueIteration
 from algorithm.sarsa import Sarsa
 from utils.model_train import trainingSarsa, trainingQlearning, trainDynaQ, trainNStepSarsa, trainingDQN, \
-trainingDoubleDQN, trainingReinforce, trainingActorCritic, trainingTRPO, trainingPPO, trainingDDPG, trainingDDPGOptuna, trainingPPOOptuna
+trainingDoubleDQN, trainingReinforce, trainingActorCritic, trainingTRPO, trainingPPO, trainingDDPG, \
+    trainingDDPGOptuna, trainingPPOOptuna, trainingSAC
 from algorithm.q_learning import QLearning
 import gymnasium as gym
 import time
@@ -85,8 +86,8 @@ def main():
     #     is_slippery=True,
     #     render_mode="human"
     # )
-    # env = gym.make("Pendulum-v1", render_mode="human")
-    env = gym.make("LunarLanderContinuous-v3", render_mode="human")
+    env = gym.make("Pendulum-v1", render_mode="human")
+    # env = gym.make("LunarLanderContinuous-v3", render_mode="human")
     env = env.unwrapped  # 解封装才能访问状态转移矩阵P
     env.reset()
     env.render()
@@ -133,9 +134,9 @@ def main():
     # trainingTRPO(env, 'Continuous', "Pendulum-v1")
     # trainingPPO(env, 'Continuous', 'Pendulum-v1')
     # trainingPPOOptuna(env, 'Continuous', 'Pendulum-v1')
-    trainingDDPG(env, "LunarLanderContinuous-v3")
+    # trainingDDPG(env, "LunarLanderContinuous-v3")
     # trainingDDPGOptuna(env, "LunarLanderContinuous-v3")
-
+    trainingSAC(env, "Pendulum-v1")
     env.close()
 
 if __name__ == "__main__":
