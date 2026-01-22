@@ -14,6 +14,7 @@ from algorithm.TRPO_fix import TRPO
 from algorithm.PPO import PPO
 from algorithm.ddpg import DDPG
 from algorithm.SAC import SACContinuous as SAC
+from algorithm.SAC_std import SACContinuous as SAC_std
 from utils import rl_utils
 from collections import deque
 import gymnasium as gym
@@ -1251,21 +1252,21 @@ def trainingDDPGOptuna(env, env_name, episodes_num=100, n_trials=50):
     return study, study.best_params
 
 
-def trainingSAC(env, env_name, episodes_num=2000, buffer_type='normal', isNoise=False):
+def trainingSAC(env, env_name, episodes_num=200, buffer_type='normal', isNoise=False):
     actor_lr = 3e-4
     critic_lr = 3e-3
     alpha_lr = 3e-4
     num_episodes = 100
     hidden_dim = 128
     gamma = 0.99
-    tau = 0.005  # 软更新参数
+    tau = 0.001  # 软更新参数
     buffer_size = 100000
     minimal_size = 1000
     batch_size = 64
-    target_entropy = -env.action_space.shape[0]
+    target_entropy = -env.action_space.shape[0] * 0.5
     max_step = 500
 
-    num_iterations = 20
+    num_iterations = 10
     device = torch.device("mps") if torch.mps.is_available() else torch.device(
         "cpu")
 
@@ -1284,8 +1285,12 @@ def trainingSAC(env, env_name, episodes_num=2000, buffer_type='normal', isNoise=
     action_dim = env.action_space.shape[0]
     action_bound = env.action_space.high[0] 
 
-    agent = SAC(state_dim, hidden_dim, action_dim, action_bound, actor_lr, critic_lr, alpha_lr, target_entropy, 
-                gamma, tau, device)
+    # agent = SAC(state_dim, hidden_dim, action_dim, action_bound, actor_lr, critic_lr, alpha_lr, target_entropy, 
+    #             gamma, tau, device)
+    agent = SAC_std(
+        state_dim, hidden_dim, action_dim, action_bound, actor_lr, critic_lr, alpha_lr, target_entropy,
+        gamma, tau, device
+    )
 
     return_list = []
     q_value_list = []
@@ -1342,9 +1347,9 @@ def trainingSAC(env, env_name, episodes_num=2000, buffer_type='normal', isNoise=
                         '%.3f' % np.mean(return_list[-int(episodes_num / num_iterations):])
                     })
                 pbar.update(1)
-    rl_utils.show_loss(agent.loss_list1)
-    rl_utils.show_loss(agent.loss_list2)
-    rl_utils.show_loss(agent.loss_list_alpha)
+    # rl_utils.show_loss(agent.loss_list1)
+    # rl_utils.show_loss(agent.loss_list2)
+    # rl_utils.show_loss(agent.loss_list_alpha)
     episodes_list = list(range(len(return_list)))
     plt.plot(episodes_list, return_list)
     plt.xlabel('Episodes')

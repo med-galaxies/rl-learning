@@ -15,12 +15,16 @@ class PolicyNetContinuous(nn.Module):
     def forward(self, x):
         x = F.relu(self.fc1(x))
         mu = self.fc_mu(x)
-        std = F.softplus(self.fc_std(x)) + 1e-5  # 确保 std > 0
+        std = F.softplus(self.fc_std(x))
+        std = torch.clamp(std, min=1e-1, max=1)
         dist = Normal(mu, std)
         normal_sample = dist.rsample()
         log_prob = dist.log_prob(normal_sample)
         action = torch.tanh(normal_sample)
-        log_prob = log_prob - torch.log(1 - action.pow(2) + 1e-6)
+        # log_prob = log_prob - torch.log(1 - action.pow(2) + 1e-7)
+        log_prob = dist.log_prob(normal_sample)
+        log_prob = log_prob - torch.log(1 - action.pow(2) + 1e-7)
+        log_prob = log_prob.sum(dim=-1, keepdim=True)
         # log_prob = torch.sum(dist.log_prob(normal_sample), dim=-1, keepdim=True)
         action = action * self.action_bound
         return action, log_prob
@@ -76,7 +80,8 @@ class SACContinuous:
             x = x[0]
         state = torch.tensor([x], dtype=torch.float).to(self.device)
         action = self.actor(state)[0]
-        return [action.item()]
+        return action.detach().cpu().numpy().flatten()
+        # return [action.item()]
     
     def cal_target(self, rewards, next_states, dones):
         next_actions, next_log_pi = self.actor(next_states)
@@ -98,9 +103,9 @@ class SACContinuous:
         states = torch.FloatTensor(states).to(self.device)
         next_states = torch.FloatTensor(transition_dict['next_states']).to(self.device)
         rewards = torch.FloatTensor(transition_dict['rewards']).view(-1, 1).to(self.device)
-        actions = torch.tensor(transition_dict['actions'], dtype=torch.long).view(-1, 1).to(self.device)
+        actions = torch.tensor(transition_dict['actions'], dtype=torch.float).view(-1, 1).to(self.device)
         dones = torch.FloatTensor(transition_dict['dones']).view(-1, 1).to(self.device)
-        rewards = (rewards + 8.0) / 8.0
+        rewards = (rewards ) / 10.0
 
         td_target = self.cal_target(rewards, next_states, dones)
 
